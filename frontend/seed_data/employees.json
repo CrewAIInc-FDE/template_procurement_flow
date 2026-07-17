@@ -1,0 +1,6 @@
+[
+  {"id": "E-001", "name": "Valentina Rojas", "email": "valentina.rojas@acme-industrial.cl", "role": "Maintenance Superintendent", "department": "Plant Maintenance", "approval_limit_usd": 75000},
+  {"id": "E-002", "name": "Matías Fernández", "email": "matias.fernandez@acme-industrial.cl", "role": "IT Support Lead", "department": "Information Technology", "approval_limit_usd": 25000},
+  {"id": "E-003", "name": "Camila Soto", "email": "camila.soto@acme-industrial.cl", "role": "HSE Coordinator", "department": "Health, Safety & Environment", "approval_limit_usd": 25000},
+  {"id": "E-004", "name": "Diego Paredes", "email": "diego.paredes@acme-industrial.cl", "role": "Junior Financial Analyst", "department": "Finance", "approval_limit_usd": 5000}
+]
