@@ -114,6 +114,72 @@ img { max-width: 100%; }
 .lang-btn:hover { color: var(--coal); }
 .lang-btn.active { background: var(--coal); color: #fff; }
 
+/* manage / gear button */
+.manage-btn {
+  width: 44px; height: 44px; border-radius: 50%; flex: none;
+  display: grid; place-items: center; color: var(--text-2);
+  background: var(--card); border: 1px solid var(--line-soft);
+  box-shadow: var(--shadow-1);
+  transition: color .15s, border-color .15s, transform .15s var(--ease);
+}
+.manage-btn:hover { color: var(--coal); border-color: var(--line); }
+.manage-btn:active { transform: scale(.94); }
+
+/* ---------- admin drawer ---------- */
+.admin-tabs { display: flex; gap: 4px; flex-wrap: wrap; margin: 18px 0 22px; border-bottom: 1px solid var(--line-soft); }
+.admin-tab {
+  font-family: var(--mono); font-size: 10px; letter-spacing: .16em; text-transform: uppercase;
+  color: var(--text-2); padding: 10px 12px; border-bottom: 2px solid transparent; margin-bottom: -1px;
+  transition: color .15s, border-color .15s;
+}
+.admin-tab:hover { color: var(--coal); }
+.admin-tab.active { color: var(--coal); border-bottom-color: var(--coral); }
+.readonly-note {
+  display: inline-flex; align-items: center; gap: 6px; margin-bottom: 14px;
+  font-family: var(--mono); font-size: 10px; letter-spacing: .1em; text-transform: uppercase;
+  color: var(--text-2); background: var(--card-grey); border-radius: 999px; padding: 5px 12px;
+}
+.admin-help { color: var(--text-2); font-size: 13px; margin: 0 0 16px; }
+
+/* admin table */
+.admin-table { width: 100%; border-collapse: collapse; font-size: 13.5px; }
+.admin-table th {
+  font-family: var(--mono); font-size: 9.5px; letter-spacing: .12em; text-transform: uppercase;
+  color: var(--text-3); font-weight: 500; text-align: left; padding: 0 10px 8px 0;
+}
+.admin-table td { padding: 10px 10px 10px 0; border-top: 1px solid var(--line-soft); vertical-align: middle; }
+.admin-table .num { text-align: right; font-family: var(--mono); font-variant-numeric: tabular-nums; white-space: nowrap; }
+.admin-table th.num { text-align: right; }
+.admin-table .sub { display: block; font-size: 11px; color: var(--text-3); margin-top: 1px; }
+.row-actions { display: flex; gap: 6px; justify-content: flex-end; }
+.icon-btn {
+  width: 34px; height: 34px; border-radius: 8px; display: grid; place-items: center;
+  color: var(--text-2); border: 1px solid var(--line-soft); background: var(--card);
+  transition: color .15s, border-color .15s, background .15s;
+}
+.icon-btn:hover { color: var(--coal); border-color: var(--line); }
+.icon-btn.danger:hover { color: var(--red); border-color: var(--red); background: var(--red-soft); }
+
+/* admin form */
+.admin-form { display: grid; grid-template-columns: repeat(2, 1fr); gap: 12px; margin-top: 6px; }
+.admin-form.settings-form { grid-template-columns: 1fr; max-width: 340px; }
+.field { display: flex; flex-direction: column; gap: 5px; }
+.field.wide { grid-column: 1 / -1; }
+.field label { font-family: var(--mono); font-size: 10px; letter-spacing: .1em; text-transform: uppercase; color: var(--text-2); }
+.field input {
+  font: inherit; font-size: 14px; color: var(--coal);
+  border: 1px solid var(--line); border-radius: var(--r-s); background: var(--card);
+  padding: 10px 12px; min-height: 44px;
+}
+.field input:focus { outline: 2px solid var(--coral); outline-offset: 0; border-color: transparent; }
+.field input[inputmode="numeric"], .field input[type="number"] { font-family: var(--mono); font-variant-numeric: tabular-nums; }
+.field-hint { font-size: 12px; color: var(--text-3); }
+.form-actions { grid-column: 1 / -1; display: flex; gap: 10px; align-items: center; margin-top: 4px; }
+.btn-small { min-height: 40px; padding: 8px 18px; font-size: 13px; }
+.btn-ghost { background: transparent; color: var(--text-2); border: 1.5px solid var(--line); border-radius: 999px; }
+.btn-ghost:hover { color: var(--coal); border-color: var(--coal); }
+.limit-badge { font-family: var(--mono); font-size: 11px; color: var(--coal); font-variant-numeric: tabular-nums; }
+
 /* ---------- board head ---------- */
 .wrap { max-width: 1280px; margin: 0 auto; padding: 40px 28px 80px; }
 .badge-row { display: flex; align-items: center; gap: 10px; }

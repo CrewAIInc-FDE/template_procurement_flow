@@ -72,7 +72,16 @@ CREATE TABLE IF NOT EXISTS pending_reviews (
   received_at TEXT NOT NULL,
   resolved_at TEXT
 );
+CREATE TABLE IF NOT EXISTS settings (
+  key TEXT PRIMARY KEY,
+  value TEXT
+);
 """
+
+# Org-wide auto-approval threshold. Seeded from the deployment env (same default
+# the AMP flow uses) so the UI starts consistent; thereafter the frontend sends
+# it on every triage kickoff, overriding the deployment env.
+DEFAULT_AUTO_APPROVE_LIMIT_USD = os.environ.get("AUTO_APPROVE_LIMIT_USD", "150000")
 
 
 def now():
@@ -121,6 +130,10 @@ def init_db():
                     "INSERT INTO suppliers VALUES (?,?,?)",
                     (s["id"], s.get("name"), json.dumps(s)),
                 )
+        conn.execute(
+            "INSERT OR IGNORE INTO settings (key, value) VALUES ('auto_approve_limit_usd', ?)",
+            (DEFAULT_AUTO_APPROVE_LIMIT_USD,),
+        )
 
 
 def allocate_pr(employee_id, message):
@@ -154,3 +167,26 @@ def upsert_artifact(conn, pr_number, kind, content):
 def get_employee(conn, employee_id):
     row = conn.execute("SELECT * FROM employees WHERE id=?", (employee_id,)).fetchone()
     return dict(row) if row else None
+
+
+def get_setting(key, default=None):
+    with db() as conn:
+        row = conn.execute("SELECT value FROM settings WHERE key=?", (key,)).fetchone()
+    return row["value"] if row else default
+
+
+def set_setting(key, value):
+    with db() as conn:
+        conn.execute(
+            "INSERT INTO settings (key, value) VALUES (?,?)"
+            " ON CONFLICT(key) DO UPDATE SET value=excluded.value",
+            (key, str(value)),
+        )
+
+
+def allocate_employee_id(conn):
+    """Next E-00N id, gap-tolerant."""
+    row = conn.execute(
+        "SELECT MAX(CAST(SUBSTR(id, 3) AS INTEGER)) FROM employees WHERE id LIKE 'E-%'"
+    ).fetchone()
+    return f"E-{(row[0] or 0) + 1:03d}"

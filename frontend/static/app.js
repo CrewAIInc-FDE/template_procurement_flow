@@ -36,6 +36,21 @@ const I18N = {
     chat_onboard: "on the board",
     submit_error: "Could not submit the request — is the server up?",
     decide_error: "Could not deliver the decision. Try again.",
+    manage: "Manage", manage_title: "Manage portal",
+    tab_people: "People", tab_policy: "Policy", tab_products: "Products", tab_suppliers: "Suppliers",
+    people_help: "The people who submit requests. Each approval limit is sent to the AI, which flags requests above it.",
+    add_person: "Add person", edit: "Edit", del: "Delete", save: "Save", cancel: "Cancel", saved: "Saved",
+    f_name: "Name", f_email: "Email", f_role: "Role", f_department: "Department", f_limit: "Approval limit (USD)",
+    th_person: "Person", th_role: "Role", th_limit: "Limit", th_product: "Product", th_category: "Category",
+    th_price: "Unit price", th_supplier: "Supplier", th_location: "Location", th_ontime: "On-time", th_categories: "Categories",
+    policy_help: "Requests whose sourced total exceeds this threshold require human review — even from an approver within their own limit.",
+    limit_label: "Auto-approve threshold (USD)",
+    readonly_note: "Backend-controlled — managed in the deployment",
+    products_help: "Catalog the AI matches requests against.",
+    suppliers_help: "Vendors the AI sources from.",
+    confirm_del_person: "Remove this person?",
+    del_person_error: "Couldn't remove — this persona has requests on the board.",
+    save_error: "Couldn't save. Check the fields and try again.",
   },
   es: {
     wordmark_em: "Portal",
@@ -67,6 +82,21 @@ const I18N = {
     chat_onboard: "en el tablero",
     submit_error: "No se pudo enviar la solicitud — ¿está activo el servidor?",
     decide_error: "No se pudo entregar la decisión. Intenta de nuevo.",
+    manage: "Gestionar", manage_title: "Gestionar portal",
+    tab_people: "Personas", tab_policy: "Política", tab_products: "Productos", tab_suppliers: "Proveedores",
+    people_help: "Las personas que envían solicitudes. Cada límite de aprobación se envía a la IA, que marca las solicitudes que lo superan.",
+    add_person: "Agregar persona", edit: "Editar", del: "Eliminar", save: "Guardar", cancel: "Cancelar", saved: "Guardado",
+    f_name: "Nombre", f_email: "Correo", f_role: "Cargo", f_department: "Departamento", f_limit: "Límite de aprobación (USD)",
+    th_person: "Persona", th_role: "Cargo", th_limit: "Límite", th_product: "Producto", th_category: "Categoría",
+    th_price: "Precio unit.", th_supplier: "Proveedor", th_location: "Ubicación", th_ontime: "A tiempo", th_categories: "Categorías",
+    policy_help: "Las solicitudes cuyo total cotizado supera este umbral requieren revisión humana — incluso de un aprobador dentro de su propio límite.",
+    limit_label: "Umbral de auto-aprobación (USD)",
+    readonly_note: "Controlado por el backend — se gestiona en el deployment",
+    products_help: "Catálogo con el que la IA compara las solicitudes.",
+    suppliers_help: "Proveedores desde los que cotiza la IA.",
+    confirm_del_person: "¿Eliminar esta persona?",
+    del_person_error: "No se pudo eliminar — esta persona tiene solicitudes en el tablero.",
+    save_error: "No se pudo guardar. Revisa los campos e intenta de nuevo.",
   },
   pt: {
     wordmark_em: "Portal",
@@ -98,6 +128,21 @@ const I18N = {
     chat_onboard: "no quadro",
     submit_error: "Não foi possível enviar o pedido — o servidor está no ar?",
     decide_error: "Não foi possível entregar a decisão. Tente de novo.",
+    manage: "Gerenciar", manage_title: "Gerenciar portal",
+    tab_people: "Pessoas", tab_policy: "Política", tab_products: "Produtos", tab_suppliers: "Fornecedores",
+    people_help: "As pessoas que enviam pedidos. Cada limite de aprovação é enviado à IA, que sinaliza pedidos acima dele.",
+    add_person: "Adicionar pessoa", edit: "Editar", del: "Excluir", save: "Salvar", cancel: "Cancelar", saved: "Salvo",
+    f_name: "Nome", f_email: "E-mail", f_role: "Cargo", f_department: "Departamento", f_limit: "Limite de aprovação (USD)",
+    th_person: "Pessoa", th_role: "Cargo", th_limit: "Limite", th_product: "Produto", th_category: "Categoria",
+    th_price: "Preço unit.", th_supplier: "Fornecedor", th_location: "Local", th_ontime: "No prazo", th_categories: "Categorias",
+    policy_help: "Pedidos cujo total cotado excede este limite exigem revisão humana — mesmo de um aprovador dentro do próprio limite.",
+    limit_label: "Limite de auto-aprovação (USD)",
+    readonly_note: "Controlado pelo backend — gerenciado no deployment",
+    products_help: "Catálogo com o qual a IA compara os pedidos.",
+    suppliers_help: "Fornecedores dos quais a IA cota.",
+    confirm_del_person: "Remover esta pessoa?",
+    del_person_error: "Não foi possível remover — esta pessoa tem pedidos no quadro.",
+    save_error: "Não foi possível salvar. Verifique os campos e tente de novo.",
   },
 };
 
@@ -138,19 +183,30 @@ async function api(path, opts) {
 
 /* -------------------------------------------------------------- persona */
 
-const EMPLOYEES = window.EMPLOYEES || [];
+let employees = (window.EMPLOYEES || []).slice();
 let personaId = localStorage.getItem("crewai_persona");
-if (!EMPLOYEES.some((e) => e.id === personaId)) personaId = EMPLOYEES[0]?.id;
+if (!employees.some((e) => e.id === personaId)) personaId = employees[0]?.id;
 
-const initials = (name) => name.split(/\s+/).map((w) => w[0]).slice(0, 2).join("").toUpperCase();
+const initials = (name) => (name || "?").split(/\s+/).map((w) => w[0]).slice(0, 2).join("").toUpperCase();
+
+async function refreshEmployees() {
+  try {
+    employees = await api("/api/employees");
+    if (!employees.some((e) => e.id === personaId)) {
+      personaId = employees[0]?.id;
+      if (personaId) localStorage.setItem("crewai_persona", personaId);
+    }
+    renderPersona();
+  } catch { /* keep current list */ }
+}
 
 function renderPersona() {
-  const emp = EMPLOYEES.find((e) => e.id === personaId);
+  const emp = employees.find((e) => e.id === personaId);
   if (!emp) return;
   $("#persona-avatar").textContent = initials(emp.name);
   $("#persona-name").textContent = emp.name;
   $("#persona-role").textContent = `${emp.role} · ${emp.department}`;
-  $("#persona-menu").innerHTML = EMPLOYEES.map((e) => `
+  $("#persona-menu").innerHTML = employees.map((e) => `
     <li><button class="persona-opt" role="option" data-id="${esc(e.id)}" aria-selected="${e.id === personaId}">
       <span class="avatar">${esc(initials(e.name))}</span>
       <span class="persona-id">
@@ -480,6 +536,201 @@ function setupChat() {
   });
 }
 
+/* --------------------------------------------------------------- manage */
+
+let manageTab = "people";
+let manageOpen = false;
+let empForm = undefined;      // undefined = hidden, null = adding, id = editing
+let settingsCache = null;
+let catalogCache = null;
+let suppliersCache = null;
+
+function fieldRow(name, key, val, type) {
+  const attr = type === "num" ? 'inputmode="numeric" step="1" min="0" type="number"' : 'type="text"';
+  return `<div class="field${key === "name" || key === "email" ? " wide" : ""}">
+    <label for="ef-${key}">${esc(t(name))}</label>
+    <input id="ef-${key}" data-ef="${key}" ${attr} value="${esc(val ?? "")}">
+  </div>`;
+}
+
+function peopleSection() {
+  const rows = employees.map((e) => `
+    <tr>
+      <td><strong>${esc(e.name)}</strong><span class="sub">${esc(e.email || "")}</span></td>
+      <td>${esc(e.role || "")}<span class="sub">${esc(e.department || "")}</span></td>
+      <td class="num"><span class="limit-badge">${esc(fmtUSD(e.approval_limit_usd))}</span></td>
+      <td><div class="row-actions">
+        <button class="icon-btn" data-emp-edit="${esc(e.id)}" aria-label="${esc(t("edit"))}">
+          <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" aria-hidden="true"><path d="M12 20h9"/><path d="M16.5 3.5a2.12 2.12 0 0 1 3 3L7 19l-4 1 1-4Z"/></svg>
+        </button>
+        <button class="icon-btn danger" data-emp-del="${esc(e.id)}" aria-label="${esc(t("del"))}">
+          <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" aria-hidden="true"><path d="M3 6h18M8 6V4a2 2 0 0 1 2-2h4a2 2 0 0 1 2 2v2m2 0v14a2 2 0 0 1-2 2H7a2 2 0 0 1-2-2V6"/></svg>
+        </button>
+      </div></td>
+    </tr>`).join("");
+
+  let form = "";
+  if (empForm !== undefined) {
+    const e = empForm ? employees.find((x) => x.id === empForm) || {} : {};
+    form = `<form class="admin-form" id="emp-form">
+      ${fieldRow("f_name", "name", e.name)}
+      ${fieldRow("f_email", "email", e.email)}
+      ${fieldRow("f_role", "role", e.role)}
+      ${fieldRow("f_department", "department", e.department)}
+      ${fieldRow("f_limit", "approval_limit_usd", e.approval_limit_usd ?? 0, "num")}
+      <div class="form-actions">
+        <button type="submit" class="btn btn-approve btn-small">${esc(t("save"))}</button>
+        <button type="button" class="btn btn-ghost btn-small" id="emp-cancel">${esc(t("cancel"))}</button>
+      </div>
+    </form>`;
+  }
+
+  return `<p class="admin-help">${esc(t("people_help"))}</p>
+    <table class="admin-table">
+      <thead><tr><th>${esc(t("th_person"))}</th><th>${esc(t("th_role"))}</th><th class="num">${esc(t("th_limit"))}</th><th></th></tr></thead>
+      <tbody>${rows}</tbody>
+    </table>
+    ${empForm === undefined ? `<div class="form-actions"><button class="btn btn-approve btn-small" id="emp-add">+ ${esc(t("add_person"))}</button></div>` : form}`;
+}
+
+function policySection() {
+  const v = settingsCache ? settingsCache.auto_approve_limit_usd : "";
+  return `<p class="admin-help">${esc(t("policy_help"))}</p>
+    <form class="admin-form settings-form" id="settings-form">
+      <div class="field">
+        <label for="sf-limit">${esc(t("limit_label"))}</label>
+        <input id="sf-limit" type="number" inputmode="numeric" min="0" step="1000" value="${esc(v)}">
+      </div>
+      <div class="form-actions">
+        <button type="submit" class="btn btn-approve btn-small">${esc(t("save"))}</button>
+        <span class="field-hint" id="settings-saved" hidden>${esc(t("saved"))} ✓</span>
+      </div>
+    </form>`;
+}
+
+function productsSection() {
+  if (!catalogCache) return `<p class="admin-help">…</p>`;
+  const rows = catalogCache.map((c) => `
+    <tr><td><strong>${esc(c.name)}</strong><span class="sub">${esc(c.sku || "")}</span></td>
+    <td>${esc(c.category || "")}</td>
+    <td class="num">${esc(fmtUSD(c.unit_price_usd))}</td></tr>`).join("");
+  return `<span class="readonly-note">${esc(t("readonly_note"))}</span>
+    <p class="admin-help">${esc(t("products_help"))}</p>
+    <table class="admin-table">
+      <thead><tr><th>${esc(t("th_product"))}</th><th>${esc(t("th_category"))}</th><th class="num">${esc(t("th_price"))}</th></tr></thead>
+      <tbody>${rows}</tbody></table>`;
+}
+
+function suppliersSection() {
+  if (!suppliersCache) return `<p class="admin-help">…</p>`;
+  const rows = suppliersCache.map((s) => {
+    const rate = s.on_time_delivery_rate != null
+      ? `${Math.round(s.on_time_delivery_rate * (s.on_time_delivery_rate <= 1 ? 100 : 1))}%` : "";
+    return `<tr><td><strong>${esc(s.name)}</strong></td>
+      <td>${esc((s.categories || []).join(", "))}</td>
+      <td>${esc(s.location || "")}</td>
+      <td class="num">${esc(rate)}</td></tr>`;
+  }).join("");
+  return `<span class="readonly-note">${esc(t("readonly_note"))}</span>
+    <p class="admin-help">${esc(t("suppliers_help"))}</p>
+    <table class="admin-table">
+      <thead><tr><th>${esc(t("th_supplier"))}</th><th>${esc(t("th_categories"))}</th><th>${esc(t("th_location"))}</th><th class="num">${esc(t("th_ontime"))}</th></tr></thead>
+      <tbody>${rows}</tbody></table>`;
+}
+
+function renderManage() {
+  const tabs = [["people", "tab_people"], ["policy", "tab_policy"], ["products", "tab_products"], ["suppliers", "tab_suppliers"]];
+  const body = { people: peopleSection, policy: policySection, products: productsSection, suppliers: suppliersSection }[manageTab]();
+  $("#manage-inner").innerHTML = `
+    <div class="drawer-top">
+      <span class="pr-mono" id="manage-title">${esc(t("manage_title").toUpperCase())}</span>
+      <button class="drawer-close" id="manage-close" aria-label="${esc(t("cancel"))}">
+        <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" aria-hidden="true"><path d="M18 6 6 18M6 6l12 12"/></svg>
+      </button>
+    </div>
+    <div class="admin-tabs">${tabs.map(([id, key]) =>
+      `<button class="admin-tab${id === manageTab ? " active" : ""}" data-tab="${id}">${esc(t(key))}</button>`).join("")}</div>
+    <div id="manage-body">${body}</div>`;
+  bindManage();
+}
+
+function bindManage() {
+  $("#manage-close").addEventListener("click", closeManage);
+  document.querySelectorAll("[data-tab]").forEach((b) =>
+    b.addEventListener("click", () => { manageTab = b.dataset.tab; empForm = undefined; loadTab(); }));
+
+  document.querySelectorAll("[data-emp-edit]").forEach((b) =>
+    b.addEventListener("click", () => { empForm = b.dataset.empEdit; renderManage(); }));
+  document.querySelectorAll("[data-emp-del]").forEach((b) =>
+    b.addEventListener("click", () => deletePerson(b.dataset.empDel)));
+  $("#emp-add")?.addEventListener("click", () => { empForm = null; renderManage(); });
+  $("#emp-cancel")?.addEventListener("click", () => { empForm = undefined; renderManage(); });
+  $("#emp-form")?.addEventListener("submit", savePerson);
+  $("#settings-form")?.addEventListener("submit", saveSettings);
+}
+
+function readEmpForm() {
+  const out = {};
+  document.querySelectorAll("#emp-form [data-ef]").forEach((i) => { out[i.dataset.ef] = i.value.trim(); });
+  return out;
+}
+
+async function savePerson(ev) {
+  ev.preventDefault();
+  const data = readEmpForm();
+  if (!data.name) return toast(t("save_error"), true);
+  const editing = empForm;  // id or null
+  try {
+    if (editing) await api(`/api/employees/${editing}`, { method: "PATCH", headers: { "Content-Type": "application/json" }, body: JSON.stringify(data) });
+    else await api("/api/employees", { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify(data) });
+    empForm = undefined;
+    await refreshEmployees();
+    renderManage();
+  } catch { toast(t("save_error"), true); }
+}
+
+async function deletePerson(id) {
+  if (!window.confirm(t("confirm_del_person"))) return;
+  try {
+    await api(`/api/employees/${id}`, { method: "DELETE" });
+    await refreshEmployees();
+    renderManage();
+  } catch { toast(t("del_person_error"), true); }
+}
+
+async function saveSettings(ev) {
+  ev.preventDefault();
+  const val = $("#sf-limit").value;
+  try {
+    settingsCache = await api("/api/settings", { method: "PATCH", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ auto_approve_limit_usd: val }) });
+    const s = $("#settings-saved"); if (s) { s.hidden = false; setTimeout(() => { s.hidden = true; }, 2500); }
+  } catch { toast(t("save_error"), true); }
+}
+
+async function loadTab() {
+  renderManage();  // paint immediately (may show placeholder)
+  try {
+    if (manageTab === "policy" && !settingsCache) settingsCache = await api("/api/settings");
+    else if (manageTab === "products" && !catalogCache) catalogCache = await api("/api/catalog");
+    else if (manageTab === "suppliers" && !suppliersCache) suppliersCache = await api("/api/suppliers");
+    else return;
+    renderManage();
+  } catch { /* leave placeholder */ }
+}
+
+function openManage() {
+  manageOpen = true;
+  $("#manage-drawer").hidden = false;
+  $("#manage-scrim").hidden = false;
+  refreshEmployees().then(loadTab).then(() => $("#manage-close")?.focus());
+}
+
+function closeManage() {
+  manageOpen = false;
+  $("#manage-drawer").hidden = true;
+  $("#manage-scrim").hidden = true;
+}
+
 /* ---------------------------------------------------------------- setup */
 
 function applyLang() {
@@ -487,12 +738,14 @@ function applyLang() {
   localStorage.setItem("crewai_lang", lang);
   document.querySelectorAll(".lang-btn").forEach((b) => b.classList.toggle("active", b.dataset.lang === lang));
   document.querySelectorAll("[data-i18n]").forEach((el) => { el.textContent = t(el.dataset.i18n); });
+  document.querySelectorAll("[data-i18n-title]").forEach((el) => { el.title = t(el.dataset.i18nTitle); });
   $("#board-title").innerHTML = t("title");
   $("#chat-text").placeholder = t("chat_placeholder");
   renderPersona();
   renderBoard();
   lastDetailJson = "";
   if (openPr) refreshDetail();
+  if (manageOpen) renderManage();
 }
 
 document.addEventListener("click", (ev) => {
@@ -500,9 +753,13 @@ document.addEventListener("click", (ev) => {
   if (card) openDrawer(card.dataset.pr);
 });
 document.addEventListener("keydown", (ev) => {
-  if (ev.key === "Escape" && openPr) closeDrawer();
+  if (ev.key !== "Escape") return;
+  if (manageOpen) closeManage();
+  else if (openPr) closeDrawer();
 });
 $("#drawer-scrim").addEventListener("click", closeDrawer);
+$("#manage-scrim").addEventListener("click", closeManage);
+$("#manage-btn").addEventListener("click", openManage);
 $("#lang-switch").addEventListener("click", (ev) => {
   const btn = ev.target.closest(".lang-btn");
   if (btn) { lang = btn.dataset.lang; applyLang(); }

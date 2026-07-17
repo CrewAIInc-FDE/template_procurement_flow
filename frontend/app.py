@@ -23,7 +23,17 @@ import requests as http
 from flask import Flask, jsonify, render_template, request
 
 import amp
-from db import allocate_pr, db, get_employee, init_db, now, upsert_artifact
+from db import (
+    allocate_employee_id,
+    allocate_pr,
+    db,
+    get_employee,
+    get_setting,
+    init_db,
+    now,
+    set_setting,
+    upsert_artifact,
+)
 
 logging.basicConfig(level=logging.INFO)
 log = logging.getLogger("portal")
@@ -81,6 +91,10 @@ def build_triage_inputs(pr_number):
                 "category_summary": ", ".join(cats) or "general",
                 "created_at": (r["created_at"] or "")[:10],
             })
+    try:
+        limit = float(get_setting("auto_approve_limit_usd", "150000"))
+    except (TypeError, ValueError):
+        limit = 150000.0
     return {
         "mode": "triage",
         "request": {
@@ -95,6 +109,8 @@ def build_triage_inputs(pr_number):
         },
         "employee": employee,
         "recent_requests": recent,
+        # Sent from the frontend setting so it overrides the deployment env.
+        "auto_approve_limit_usd": limit,
     }
 
 
@@ -215,7 +231,7 @@ def list_requests():
             " (SELECT COUNT(*) FROM request_items ri WHERE ri.pr_number=pr.pr_number) AS items_count,"
             " (SELECT content FROM request_artifacts a WHERE a.pr_number=pr.pr_number AND a.kind='alerts') AS alerts_json,"
             " (SELECT COUNT(*) FROM pending_reviews v WHERE v.pr_number=pr.pr_number AND v.resolved_at IS NULL) AS pending_review"
-            " FROM purchase_requests pr JOIN employees e ON e.id=pr.employee_id"
+            " FROM purchase_requests pr LEFT JOIN employees e ON e.id=pr.employee_id"
             " ORDER BY pr.created_at DESC"
         ).fetchall()
     out = []
@@ -396,6 +412,128 @@ def hitl_webhook():
 def wakeup():
     threading.Thread(target=amp.wakeup, daemon=True).start()
     return "", 204
+
+
+# ------------------------------------------------------- config & profiles
+
+EMP_FIELDS = ("name", "email", "role", "department", "approval_limit_usd")
+
+
+def _clean_employee_payload(data, require_name=True):
+    """Validate at the trust boundary. Returns (fields_dict, error_response|None)."""
+    out = {}
+    if "name" in data or require_name:
+        name = (data.get("name") or "").strip()
+        if require_name and not name:
+            return None, (jsonify({"error": "name is required"}), 400)
+        out["name"] = name
+    for f in ("email", "role", "department"):
+        if f in data:
+            out[f] = (data.get(f) or "").strip()
+    if "approval_limit_usd" in data:
+        try:
+            limit = float(data["approval_limit_usd"])
+        except (TypeError, ValueError):
+            return None, (jsonify({"error": "approval_limit_usd must be a number"}), 400)
+        if limit < 0:
+            return None, (jsonify({"error": "approval_limit_usd must be ≥ 0"}), 400)
+        out["approval_limit_usd"] = limit
+    return out, None
+
+
+@app.get("/api/employees")
+def list_employees():
+    with db() as conn:
+        rows = [dict(r) for r in conn.execute(
+            "SELECT * FROM employees ORDER BY id").fetchall()]
+    return jsonify(rows)
+
+
+@app.post("/api/employees")
+def create_employee():
+    data = request.get_json(force=True)
+    fields, err = _clean_employee_payload(data, require_name=True)
+    if err:
+        return err
+    with db() as conn:
+        emp_id = allocate_employee_id(conn)
+        conn.execute(
+            "INSERT INTO employees (id, name, email, role, department, approval_limit_usd)"
+            " VALUES (?,?,?,?,?,?)",
+            (emp_id, fields.get("name"), fields.get("email"), fields.get("role"),
+             fields.get("department"), fields.get("approval_limit_usd", 0)),
+        )
+        row = dict(conn.execute("SELECT * FROM employees WHERE id=?", (emp_id,)).fetchone())
+    return jsonify(row), 201
+
+
+@app.patch("/api/employees/<emp_id>")
+def update_employee(emp_id):
+    data = request.get_json(force=True)
+    fields, err = _clean_employee_payload(data, require_name=False)
+    if err:
+        return err
+    if not fields:
+        return jsonify({"error": "nothing to update"}), 400
+    with db() as conn:
+        if not conn.execute("SELECT 1 FROM employees WHERE id=?", (emp_id,)).fetchone():
+            return jsonify({"error": "not found"}), 404
+        sets = ", ".join(f"{k}=?" for k in fields)
+        conn.execute(f"UPDATE employees SET {sets} WHERE id=?", (*fields.values(), emp_id))
+        row = dict(conn.execute("SELECT * FROM employees WHERE id=?", (emp_id,)).fetchone())
+    return jsonify(row)
+
+
+@app.delete("/api/employees/<emp_id>")
+def delete_employee(emp_id):
+    with db() as conn:
+        used = conn.execute(
+            "SELECT COUNT(*) FROM purchase_requests WHERE employee_id=?", (emp_id,)).fetchone()[0]
+        if used:
+            return jsonify({"error": "persona has requests on the board"}), 409
+        conn.execute("DELETE FROM employees WHERE id=?", (emp_id,))
+    return jsonify({"ok": True})
+
+
+@app.get("/api/settings")
+def get_settings():
+    try:
+        limit = float(get_setting("auto_approve_limit_usd", "150000"))
+    except (TypeError, ValueError):
+        limit = 150000.0
+    return jsonify({"auto_approve_limit_usd": limit})
+
+
+@app.patch("/api/settings")
+def patch_settings():
+    data = request.get_json(force=True)
+    if "auto_approve_limit_usd" in data:
+        try:
+            limit = float(data["auto_approve_limit_usd"])
+        except (TypeError, ValueError):
+            return jsonify({"error": "auto_approve_limit_usd must be a number"}), 400
+        if limit < 0:
+            return jsonify({"error": "auto_approve_limit_usd must be ≥ 0"}), 400
+        set_setting("auto_approve_limit_usd", limit)
+    return get_settings()
+
+
+@app.get("/api/catalog")
+def list_catalog():
+    """Read-only — products are backend-controlled (bundled with the deployment)."""
+    with db() as conn:
+        rows = [dict(r) for r in conn.execute(
+            "SELECT id, sku, name, description, category, unit, unit_price_usd"
+            " FROM catalog_items ORDER BY category, name").fetchall()]
+    return jsonify(rows)
+
+
+@app.get("/api/suppliers")
+def list_suppliers():
+    """Read-only — suppliers are backend-controlled (bundled with the deployment)."""
+    with db() as conn:
+        rows = conn.execute("SELECT data_json FROM suppliers ORDER BY name").fetchall()
+    return jsonify([json.loads(r["data_json"]) for r in rows])
 
 
 # ------------------------------------------------------------ dev fixtures
