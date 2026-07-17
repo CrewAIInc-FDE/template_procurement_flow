@@ -22,6 +22,19 @@ Two backends, picked by env:
   locally, so the board's Approve/Reject buttons and the `awaiting review` badge only work
   against a real AMP deployment.
 
+## Manage panel (gear icon, top-right)
+
+- **People** — add/edit/delete personas and their `approval_limit_usd`. The employee object
+  (incl. the limit) rides on every kickoff, so edits affect the AI's screening immediately.
+- **Policy** — the auto-approve threshold. Stored in the `settings` table and **sent on every
+  triage kickoff as `auto_approve_limit_usd`**, overriding the deployment's `AUTO_APPROVE_LIMIT_USD`
+  env. Requests whose sourced total exceeds it (or that screening flags) escalate to human review.
+- **Products / Suppliers** — read-only viewers. Reference data stays backend-controlled (bundled
+  with the deployment; MongoDB-backed later), so the frontend never sends catalog/suppliers as
+  kickoff inputs.
+
+All of this is ephemeral SQLite — edits reset to seed on dyno restart/redeploy.
+
 ## Fixtures (instant UI states, zero LLM calls)
 
 ```bash

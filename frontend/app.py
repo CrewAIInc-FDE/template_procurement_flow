@@ -275,8 +275,12 @@ def request_detail(pr_number):
             "SELECT * FROM pending_reviews WHERE pr_number=?", (pr_number,)).fetchone()
     for kind in ("screening", "sourcing", "alerts"):
         d[kind] = json.loads(arts[kind]) if kind in arts else None
-    for kind in ("purchase_order", "escalation_memo", "rejection_note"):
+    for kind in ("purchase_order", "rejection_note"):
         d[kind + "_html"] = render_md(arts.get(kind))
+    # During the AMP pause, /status returns no result — the escalation memo lives
+    # only in the HITL webhook payload (stored on pending_reviews). Fall back to it.
+    memo_src = arts.get("escalation_memo") or (review["memo"] if review else None)
+    d["escalation_memo_html"] = render_md(strip_md_fence(memo_src) if memo_src else None)
     d["pending_review"] = bool(review and not review["resolved_at"])
     d["review_resolved"] = bool(review and review["resolved_at"])
     return jsonify(d)
@@ -377,8 +381,11 @@ def hitl_webhook():
     callback_url = _find_key(body, "callback_url", "callbackUrl")
     if not callback_url:
         return jsonify({"error": "no callback_url"}), 400
-    memo = _find_key(body, "memo", "content", "message", "body") or ""
-    kickoff_id = _find_key(body, "kickoff_id", "execution_id", "kickoffId")
+    # AMP HITL new_request: the rich escalation memo is in `output`; `message` is
+    # only the generic reviewer prompt. Prefer output.
+    memo = _find_key(body, "output", "memo", "content", "body") or ""
+    # AMP correlates by flow_id (== the kickoff_id returned by /kickoff == execution_id).
+    kickoff_id = _find_key(body, "kickoff_id", "execution_id", "kickoffId", "flow_id")
 
     with db() as conn:
         pr_number = None
