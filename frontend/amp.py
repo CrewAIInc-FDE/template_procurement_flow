@@ -1,10 +1,9 @@
 """AMP transport: kickoff/status/wakeup, plus a local in-process fallback and
 the status-polling watchdog.
 
-The watchdog is NOT a nicety: while a triage kickoff is paused on AMP's
-@human_feedback gate, nothing pushes the `needs_review` snapshot (with
-alerts[] + escalation_md) to us — polling GET /status is the only way the
-board learns a card is awaiting review with its alert count. Do not remove.
+The watchdog is NOT a nicety: while quote review is paused on AMP's
+@human_feedback gate, polling GET /status remains the fallback for dropped
+flow/HITL webhooks. Do not remove.
 """
 
 import json
@@ -75,7 +74,7 @@ def start_kickoff(pr_number, mode, inputs):
 def _run_local(pr_number, kickoff_id, mode, inputs):
     """Local dev without AMP: run ProcurementFlow in-process (needs OPENAI_API_KEY).
 
-    Escalated triage BLOCKS here on a console approved/rejected prompt —
+    Quote review BLOCKS here on a console approved/rejected prompt —
     the HITL webhook/board-button channel only exists on AMP.
     """
     from app import process_envelope  # late import — app imports us at module load
@@ -88,7 +87,7 @@ def _run_local(pr_number, kickoff_id, mode, inputs):
             sys.path.insert(0, str(Path(__file__).resolve().parent.parent / "src"))
             from procurement_flow.main import ProcurementFlow
 
-        log.warning("[local] %s kickoff for %s — escalations block on a console prompt "
+        log.warning("[local] %s kickoff for %s — quote approval blocks on a console prompt "
                     "in THIS terminal", mode, pr_number)
         flow = ProcurementFlow()
         flow.kickoff(inputs=inputs)

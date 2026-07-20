@@ -8,7 +8,6 @@ import json
 import logging
 import re
 import threading
-import uuid
 from datetime import datetime, timedelta, timezone
 from pathlib import Path
 
@@ -40,7 +39,6 @@ log = logging.getLogger("portal")
 
 app = Flask(__name__)
 
-EXAMPLES_DIR = HERE.parent / "docs" / "examples"
 FIXTURE_CALLBACK = "fixture:noop"
 
 
@@ -65,15 +63,35 @@ def set_status(conn, pr_number, status, phase=None):
     )
 
 
-def build_triage_inputs(pr_number):
+def build_quote_review_inputs(pr_number):
     with db() as conn:
         pr = conn.execute(
             "SELECT * FROM purchase_requests WHERE pr_number=?", (pr_number,)
         ).fetchone()
         items = [dict(r) for r in conn.execute(
-            "SELECT catalog_item_id, sku, name, quantity, unit_price_usd, line_total_usd"
-            " FROM request_items WHERE pr_number=?", (pr_number,)).fetchall()]
+            "SELECT ri.id AS request_item_id, ri.catalog_item_id, ri.sku, ri.name,"
+            " ri.quantity, ri.unit_price_usd, ri.line_total_usd FROM request_items ri"
+            " LEFT JOIN purchase_order_items poi ON poi.request_item_id=ri.id"
+            " WHERE ri.pr_number=? AND poi.id IS NULL ORDER BY ri.id",
+            (pr_number,),
+        ).fetchall()]
         employee = get_employee(conn, pr["employee_id"])
+        existing_awards = []
+        for row in conn.execute(
+            "SELECT poi.request_item_id, ri.catalog_item_id, ri.sku, ri.name AS item_name,"
+            " ri.quantity, poi.quote_id, poi.supplier_id, poi.supplier_name,"
+            " poi.unit_price, poi.currency, poi.line_total, poi.line_total_usd,"
+            " poi.delivery_days, poi.risk_notes_json FROM purchase_order_items poi"
+            " JOIN request_items ri ON ri.id=poi.request_item_id"
+            " WHERE ri.pr_number=? ORDER BY poi.request_item_id",
+            (pr_number,),
+        ).fetchall():
+            award = dict(row)
+            award["risk_notes"] = json.loads(award.pop("risk_notes_json") or "[]")
+            existing_awards.append(award)
+        existing_purchase_orders = [dict(r) for r in conn.execute(
+            "SELECT po_number, supplier_id, supplier_name FROM purchase_orders"
+            " WHERE pr_number=? ORDER BY po_number", (pr_number,)).fetchall()]
         cutoff = (datetime.now(timezone.utc) - timedelta(days=14)).isoformat()
         recent = []
         for r in conn.execute(
@@ -91,12 +109,9 @@ def build_triage_inputs(pr_number):
                 "category_summary": ", ".join(cats) or "general",
                 "created_at": (r["created_at"] or "")[:10],
             })
-    try:
-        limit = float(get_setting("auto_approve_limit_usd", "150000"))
-    except (TypeError, ValueError):
-        limit = 150000.0
+    clp_per_usd = float(get_setting("clp_per_usd"))
     return {
-        "mode": "triage",
+        "mode": "quote_review",
         "request": {
             "pr_number": pr_number,
             "line_items": items,
@@ -109,18 +124,16 @@ def build_triage_inputs(pr_number):
         },
         "employee": employee,
         "recent_requests": recent,
-        # Sent from the frontend setting so it overrides the deployment env.
-        "auto_approve_limit_usd": limit,
+        "clp_per_usd": clp_per_usd,
+        "existing_awards": existing_awards,
+        "existing_purchase_orders": existing_purchase_orders,
     }
 
 
 # ------------------------------------------------------- envelope pipeline
 
-def process_envelope(pr_number, kickoff_id, envelope, chain=True):
-    """Single idempotent sink for results from webhook, watchdog, local runs
-    and fixtures. Terminal envelopes are claimed atomically; a triage
-    `needs_review` snapshot is NON-terminal — it is the only pre-resolution
-    source of alerts[]/escalation_md, so persist those and keep polling."""
+def process_envelope(pr_number, kickoff_id, envelope):
+    """Idempotent result sink shared by webhooks, polling, and local runs."""
     with db() as conn:
         row = conn.execute(
             "SELECT mode, state FROM kickoffs WHERE kickoff_id=?", (kickoff_id,)
@@ -131,22 +144,17 @@ def process_envelope(pr_number, kickoff_id, envelope, chain=True):
 
     mode = row["mode"]
     final_status = envelope.get("final_status") or ""
-    is_terminal = (mode == "intake" and final_status == "submitted") or (
-        mode == "triage" and final_status in ("approved", "rejected")
+    is_terminal = (mode == "intake" and final_status == "awaiting_quotes") or (
+        mode == "quote_review"
+        and final_status in ("approved", "rejected", "awaiting_quotes")
     )
 
     if not is_terminal:
-        if mode == "triage" and final_status == "needs_review":
+        if mode == "quote_review" and final_status == "needs_review":
             with db() as conn:
-                if envelope.get("alerts"):
-                    upsert_artifact(conn, pr_number, "alerts", json.dumps(envelope["alerts"]))
-                if envelope.get("escalation_md"):
-                    upsert_artifact(conn, pr_number, "escalation_memo",
-                                    strip_md_fence(envelope["escalation_md"]))
-                if envelope.get("screening"):
-                    upsert_artifact(conn, pr_number, "screening", json.dumps(envelope["screening"]))
-                if envelope.get("sourcing"):
-                    upsert_artifact(conn, pr_number, "sourcing", json.dumps(envelope["sourcing"]))
+                for kind in ("alerts", "screening", "quote_review", "warnings"):
+                    if envelope.get(kind):
+                        upsert_artifact(conn, pr_number, kind, json.dumps(envelope[kind]))
                 conn.execute(
                     "UPDATE purchase_requests SET status='awaiting_review', updated_at=?"
                     " WHERE pr_number=? AND status NOT IN ('awaiting_review','approved','rejected')",
@@ -167,7 +175,7 @@ def process_envelope(pr_number, kickoff_id, envelope, chain=True):
         with db() as conn:
             conn.execute(
                 "UPDATE purchase_requests SET justification=?, urgency=?, detected_language=?,"
-                " estimated_total_usd=?, unmatched_json=?, status='in_triage', updated_at=?"
+                " estimated_total_usd=?, unmatched_json=?, status='awaiting_quotes', updated_at=?"
                 " WHERE pr_number=?",
                 (draft.get("justification"), draft.get("urgency"),
                  draft.get("detected_language"), draft.get("estimated_total_usd"),
@@ -181,24 +189,62 @@ def process_envelope(pr_number, kickoff_id, envelope, chain=True):
                     (pr_number, li.get("catalog_item_id"), li.get("sku"), li.get("name"),
                      li.get("quantity"), li.get("unit_price_usd"), li.get("line_total_usd")),
                 )
-        if chain:
-            amp.start_kickoff(pr_number, "triage", build_triage_inputs(pr_number))
-        log.info("%s intake done → triage %s", pr_number, "kicked" if chain else "skipped")
+        log.info("%s intake done → awaiting quotes", pr_number)
     else:
         with db() as conn:
             for kind, key, is_md in (
-                ("screening", "screening", False), ("sourcing", "sourcing", False),
-                ("alerts", "alerts", False), ("purchase_order", "po_md", True),
-                ("escalation_memo", "escalation_md", True), ("rejection_note", "rejection_md", True),
+                ("screening", "screening", False),
+                ("quote_review", "quote_review", False),
+                ("alerts", "alerts", False),
+                ("warnings", "warnings", False),
+                ("rejection_note", "rejection_md", True),
             ):
                 val = envelope.get(key)
                 if val:
                     upsert_artifact(conn, pr_number, kind,
                                     strip_md_fence(val) if is_md else json.dumps(val))
+            for po in envelope.get("purchase_orders") or []:
+                ts = now()
+                conn.execute(
+                    "INSERT INTO purchase_orders"
+                    " (pr_number, po_number, supplier_id, supplier_name, markdown, total_usd, created_at, updated_at)"
+                    " VALUES (?,?,?,?,?,?,?,?) ON CONFLICT(pr_number, supplier_id) DO UPDATE SET"
+                    " po_number=excluded.po_number, supplier_name=excluded.supplier_name,"
+                    " markdown=excluded.markdown, total_usd=excluded.total_usd, updated_at=excluded.updated_at",
+                    (pr_number, po["po_number"], po["supplier_id"], po["supplier_name"],
+                     po["markdown"], po["total_usd"], ts, ts),
+                )
+                po_id = conn.execute(
+                    "SELECT id FROM purchase_orders WHERE pr_number=? AND supplier_id=?",
+                    (pr_number, po["supplier_id"]),
+                ).fetchone()[0]
+                for item in po.get("items", []):
+                    conn.execute(
+                        "INSERT INTO purchase_order_items"
+                        " (po_id, request_item_id, quote_id, supplier_id, supplier_name, unit_price,"
+                        " currency, line_total, line_total_usd, delivery_days, risk_notes_json, created_at, updated_at)"
+                        " VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?) ON CONFLICT(request_item_id) DO UPDATE SET"
+                        " po_id=excluded.po_id, quote_id=excluded.quote_id, supplier_id=excluded.supplier_id,"
+                        " supplier_name=excluded.supplier_name, unit_price=excluded.unit_price,"
+                        " currency=excluded.currency, line_total=excluded.line_total,"
+                        " line_total_usd=excluded.line_total_usd, delivery_days=excluded.delivery_days,"
+                        " risk_notes_json=excluded.risk_notes_json, updated_at=excluded.updated_at",
+                        (po_id, item["request_item_id"], item["quote_id"], item["supplier_id"],
+                         item["supplier_name"], item["unit_price"], item["currency"],
+                         item["line_total"], item["line_total_usd"], item["delivery_days"],
+                         json.dumps(item.get("risk_notes", [])), ts, ts),
+                    )
+            if final_status == "approved":
+                outstanding = conn.execute(
+                    "SELECT COUNT(*) FROM request_items ri LEFT JOIN purchase_order_items poi"
+                    " ON poi.request_item_id=ri.id WHERE ri.pr_number=? AND poi.id IS NULL",
+                    (pr_number,),
+                ).fetchone()[0]
+                final_status = "awaiting_quotes" if outstanding else "approved"
             set_status(conn, pr_number, final_status)
             conn.execute("UPDATE pending_reviews SET resolved_at=COALESCE(resolved_at, ?)"
                          " WHERE pr_number=?", (now(), pr_number))
-        log.info("%s triage done → %s", pr_number, final_status)
+        log.info("%s quote review done → %s", pr_number, final_status)
 
 
 def _submit_pipeline(pr_number, employee):
@@ -268,22 +314,116 @@ def request_detail(pr_number):
         d["employee"] = get_employee(conn, pr["employee_id"])
         d["unmatched"] = json.loads(d.pop("unmatched_json") or "[]")
         d["items"] = [dict(r) for r in conn.execute(
-            "SELECT * FROM request_items WHERE pr_number=?", (pr_number,)).fetchall()]
+            "SELECT ri.*, poi.quote_id, poi.supplier_name AS awarded_supplier,"
+            " po.po_number FROM request_items ri"
+            " LEFT JOIN purchase_order_items poi ON poi.request_item_id=ri.id"
+            " LEFT JOIN purchase_orders po ON po.id=poi.po_id"
+            " WHERE ri.pr_number=? ORDER BY ri.id", (pr_number,)).fetchall()]
+        d["outstanding_items"] = [item for item in d["items"] if not item["quote_id"]]
         arts = {r["kind"]: r["content"] for r in conn.execute(
             "SELECT kind, content FROM request_artifacts WHERE pr_number=?", (pr_number,)).fetchall()}
         review = conn.execute(
             "SELECT * FROM pending_reviews WHERE pr_number=?", (pr_number,)).fetchone()
-    for kind in ("screening", "sourcing", "alerts"):
+        purchase_orders = [dict(r) for r in conn.execute(
+            "SELECT po_number, supplier_id, supplier_name, markdown, total_usd"
+            " FROM purchase_orders WHERE pr_number=? ORDER BY po_number",
+            (pr_number,),
+        ).fetchall()]
+    for kind in ("screening", "quote_review", "alerts", "warnings"):
         d[kind] = json.loads(arts[kind]) if kind in arts else None
-    for kind in ("purchase_order", "rejection_note"):
-        d[kind + "_html"] = render_md(arts.get(kind))
-    # During the AMP pause, /status returns no result — the escalation memo lives
-    # only in the HITL webhook payload (stored on pending_reviews). Fall back to it.
-    memo_src = arts.get("escalation_memo") or (review["memo"] if review else None)
-    d["escalation_memo_html"] = render_md(strip_md_fence(memo_src) if memo_src else None)
+    d["rejection_note_html"] = render_md(arts.get("rejection_note"))
+    d["purchase_orders"] = []
+    for po in purchase_orders:
+        markdown = po.pop("markdown")
+        d["purchase_orders"].append({**po, "html": render_md(markdown)})
+    if review and review["memo"]:
+        try:
+            d["quote_review"] = json.loads(strip_md_fence(review["memo"]))
+        except (TypeError, ValueError):
+            pass
     d["pending_review"] = bool(review and not review["resolved_at"])
     d["review_resolved"] = bool(review and review["resolved_at"])
     return jsonify(d)
+
+
+@app.post("/api/requests/<pr_number>/review-quotes")
+def review_quotes(pr_number):
+    with db() as conn:
+        conn.execute("BEGIN IMMEDIATE")
+        pr = conn.execute(
+            "SELECT status FROM purchase_requests WHERE pr_number=?", (pr_number,)
+        ).fetchone()
+        if not pr:
+            return jsonify({"error": "not found"}), 404
+        pending = conn.execute(
+            "SELECT kickoff_id FROM kickoffs WHERE pr_number=? AND mode='quote_review'"
+            " AND state='pending' ORDER BY created_at DESC LIMIT 1",
+            (pr_number,),
+        ).fetchone()
+        if pr["status"] in ("reviewing_quotes", "awaiting_review"):
+            return jsonify({
+                "kickoff_id": pending["kickoff_id"] if pending else None,
+                "already_running": True,
+            }), 202
+        if pr["status"] != "awaiting_quotes":
+            return jsonify({"error": "request is not awaiting quotes"}), 409
+        setting = conn.execute(
+            "SELECT value FROM settings WHERE key='clp_per_usd'"
+        ).fetchone()
+        try:
+            clp_per_usd = float(setting["value"] if setting else None)
+        except (TypeError, ValueError):
+            clp_per_usd = 0
+        if clp_per_usd <= 0:
+            return jsonify({"error": "configure a positive CLP per USD rate first"}), 400
+        outstanding = conn.execute(
+            "SELECT COUNT(*) FROM request_items ri LEFT JOIN purchase_order_items poi"
+            " ON poi.request_item_id=ri.id WHERE ri.pr_number=? AND poi.id IS NULL",
+            (pr_number,),
+        ).fetchone()[0]
+        if not outstanding:
+            return jsonify({"error": "no outstanding items"}), 409
+        set_status(conn, pr_number, "reviewing_quotes", "screening")
+    try:
+        kickoff_id = amp.start_kickoff(
+            pr_number, "quote_review", build_quote_review_inputs(pr_number)
+        )
+    except Exception as exc:
+        log.exception("quote review kickoff failed for %s", pr_number)
+        with db() as conn:
+            set_status(conn, pr_number, "awaiting_quotes")
+        return jsonify({"error": f"could not start quote review: {exc}"}), 502
+    return jsonify({"kickoff_id": kickoff_id, "already_running": False}), 202
+
+
+def _validate_portal_awards(conn, pr_number, proposal, awards):
+    lines = proposal.get("lines") or []
+    if not isinstance(awards, list) or len(awards) != len(lines):
+        raise ValueError("exactly one award is required for every covered item")
+    line_by_item = {int(line["request_item_id"]): line for line in lines}
+    normalized = []
+    seen = set()
+    for award in awards:
+        try:
+            item_id = int(award["request_item_id"])
+            quote_id = str(award["quote_id"])
+        except (KeyError, TypeError, ValueError) as exc:
+            raise ValueError("each award needs request_item_id and quote_id") from exc
+        line = line_by_item.get(item_id)
+        if not line or item_id in seen:
+            raise ValueError(f"invalid or duplicate request item {item_id}")
+        if quote_id not in {str(option["quote_id"]) for option in line.get("options", [])}:
+            raise ValueError(f"quote {quote_id} is not valid for item {item_id}")
+        item = conn.execute(
+            "SELECT ri.id, poi.id AS award_id FROM request_items ri"
+            " LEFT JOIN purchase_order_items poi ON poi.request_item_id=ri.id"
+            " WHERE ri.id=? AND ri.pr_number=?", (item_id, pr_number),
+        ).fetchone()
+        if not item or item["award_id"]:
+            raise ValueError(f"item {item_id} is unknown or already awarded")
+        seen.add(item_id)
+        normalized.append({"request_item_id": item_id, "quote_id": quote_id})
+    return sorted(normalized, key=lambda award: award["request_item_id"])
 
 
 def _decide(pr_number, feedback):
@@ -293,22 +433,43 @@ def _decide(pr_number, feedback):
     if not review:
         return jsonify({"error": "no pending review"}), 409
     if review["callback_url"] != FIXTURE_CALLBACK:
-        resp = http.post(review["callback_url"],
-                         json={"feedback": feedback, "source": "procurement-portal"}, timeout=30)
-        resp.raise_for_status()
+        try:
+            resp = http.post(review["callback_url"],
+                             json={"feedback": feedback, "source": "procurement-portal"}, timeout=30)
+            resp.raise_for_status()
+        except http.RequestException as exc:
+            return jsonify({"error": f"could not deliver decision: {exc}"}), 502
     with db() as conn:
         conn.execute("UPDATE pending_reviews SET resolved_at=? WHERE pr_number=?", (now(), pr_number))
+        conn.execute(
+            "UPDATE purchase_requests SET status='reviewing_quotes', phase='approval', updated_at=?"
+            " WHERE pr_number=? AND status='awaiting_review'", (now(), pr_number)
+        )
     return jsonify({"ok": True, "feedback": feedback})
 
 
 @app.post("/api/requests/<pr_number>/approve")
 def approve(pr_number):
-    return _decide(pr_number, "approved")
+    data = request.get_json(force=True, silent=True) or {}
+    with db() as conn:
+        review = conn.execute(
+            "SELECT memo FROM pending_reviews WHERE pr_number=? AND resolved_at IS NULL",
+            (pr_number,),
+        ).fetchone()
+        if not review:
+            return jsonify({"error": "no pending review"}), 409
+        try:
+            proposal = json.loads(strip_md_fence(review["memo"]))
+            awards = _validate_portal_awards(conn, pr_number, proposal, data.get("awards"))
+        except (TypeError, ValueError) as exc:
+            return jsonify({"error": str(exc)}), 400
+    feedback = json.dumps({"decision": "approved", "awards": awards}, separators=(",", ":"))
+    return _decide(pr_number, feedback)
 
 
 @app.post("/api/requests/<pr_number>/reject")
 def reject(pr_number):
-    return _decide(pr_number, "rejected")
+    return _decide(pr_number, json.dumps({"decision": "rejected"}))
 
 
 def _find_key(obj, *names):
@@ -343,12 +504,12 @@ def flow_webhook(pr_number):
         name = _find_key(event, "event", "event_type", "type") or ""
         if name.startswith("tool_usage"):
             role = (_find_key(event, "agent_role", "agent") or "").lower()
-            phase = "screening" if "screen" in role else "sourcing" if "sourc" in role else None
+            phase = "screening" if "screen" in role else "gmail" if "quote" in role or "inbox" in role else None
             if phase:
                 with db() as conn:
                     conn.execute(
                         "UPDATE purchase_requests SET phase=?, updated_at=? WHERE pr_number=?"
-                        " AND status IN ('in_triage','awaiting_review')",
+                        " AND status IN ('reviewing_quotes','awaiting_review')",
                         (phase, now(), pr_number))
         elif name == "flow_finished" or not name:
             flow_name = _find_key(event, "flow_name") or ""
@@ -372,7 +533,7 @@ def flow_webhook(pr_number):
 def hitl_webhook():
     token = request.args.get("token") or request.headers.get("Authorization", "").removeprefix("Bearer ")
     if amp.WEBHOOK_TOKEN and token != amp.WEBHOOK_TOKEN:
-        # Permissive by design: dropping an escalation mid-demo is worse than
+        # Permissive by design: dropping a quote review mid-demo is worse than
         # a briefly-open endpoint. Log loudly instead of 401ing.
         log.warning("HITL webhook token mismatch — processing anyway")
     body = request.get_json(force=True, silent=True) or {}
@@ -381,9 +542,15 @@ def hitl_webhook():
     callback_url = _find_key(body, "callback_url", "callbackUrl")
     if not callback_url:
         return jsonify({"error": "no callback_url"}), 400
-    # AMP HITL new_request: the rich escalation memo is in `output`; `message` is
-    # only the generic reviewer prompt. Prefer output.
-    memo = _find_key(body, "output", "memo", "content", "body") or ""
+    # The HITL method returns the structured quote proposal in `output`.
+    proposal = _find_key(body, "output", "memo", "content", "body") or {}
+    if isinstance(proposal, str):
+        try:
+            proposal = json.loads(strip_md_fence(proposal))
+        except (TypeError, ValueError):
+            proposal = {}
+    if not isinstance(proposal, dict) or not proposal.get("lines"):
+        return jsonify({"error": "HITL output is not a structured quote review"}), 400
     # AMP correlates by flow_id (== the kickoff_id returned by /kickoff == execution_id).
     kickoff_id = _find_key(body, "kickoff_id", "execution_id", "kickoffId", "flow_id")
 
@@ -393,21 +560,25 @@ def hitl_webhook():
             r = conn.execute("SELECT pr_number FROM kickoffs WHERE kickoff_id=?", (kickoff_id,)).fetchone()
             pr_number = r["pr_number"] if r else None
         if not pr_number:
-            # Fallback: the only in-flight triage. Fine for a demo, logged loudly.
-            rows = conn.execute("SELECT pr_number FROM kickoffs WHERE mode='triage'"
+            # Fallback: the only in-flight quote review. Fine for a demo, logged loudly.
+            rows = conn.execute("SELECT pr_number FROM kickoffs WHERE mode='quote_review'"
                                 " AND state='pending'").fetchall()
             if len(rows) == 1:
                 pr_number = rows[0]["pr_number"]
-                log.warning("HITL webhook without kickoff_id — matched sole in-flight triage %s", pr_number)
+                log.warning("HITL webhook without kickoff_id — matched sole quote review %s", pr_number)
         if not pr_number:
             log.error("HITL webhook could not be matched to a PR — stored nothing")
             return jsonify({"error": "unmatched"}), 202
+        if proposal.get("pr_number") and proposal["pr_number"] != pr_number:
+            return jsonify({"error": "proposal PR does not match kickoff"}), 400
         conn.execute(
             "INSERT INTO pending_reviews (pr_number, callback_url, memo, received_at)"
             " VALUES (?,?,?,?) ON CONFLICT(pr_number) DO UPDATE SET"
             " callback_url=excluded.callback_url, memo=excluded.memo,"
             " received_at=excluded.received_at, resolved_at=NULL",
-            (pr_number, callback_url, memo, now()))
+            (pr_number, callback_url, json.dumps(proposal), now()))
+        if proposal:
+            upsert_artifact(conn, pr_number, "quote_review", json.dumps(proposal))
         conn.execute(
             "UPDATE purchase_requests SET status='awaiting_review', updated_at=?"
             " WHERE pr_number=? AND status NOT IN ('approved','rejected')",
@@ -422,9 +593,6 @@ def wakeup():
 
 
 # ------------------------------------------------------- config & profiles
-
-EMP_FIELDS = ("name", "email", "role", "department", "approval_limit_usd")
-
 
 def _clean_employee_payload(data, require_name=True):
     """Validate at the trust boundary. Returns (fields_dict, error_response|None)."""
@@ -505,23 +673,23 @@ def delete_employee(emp_id):
 @app.get("/api/settings")
 def get_settings():
     try:
-        limit = float(get_setting("auto_approve_limit_usd", "150000"))
+        clp_per_usd = float(get_setting("clp_per_usd"))
     except (TypeError, ValueError):
-        limit = 150000.0
-    return jsonify({"auto_approve_limit_usd": limit})
+        clp_per_usd = None
+    return jsonify({"clp_per_usd": clp_per_usd})
 
 
 @app.patch("/api/settings")
 def patch_settings():
     data = request.get_json(force=True)
-    if "auto_approve_limit_usd" in data:
+    if "clp_per_usd" in data:
         try:
-            limit = float(data["auto_approve_limit_usd"])
+            clp_per_usd = float(data["clp_per_usd"])
         except (TypeError, ValueError):
-            return jsonify({"error": "auto_approve_limit_usd must be a number"}), 400
-        if limit < 0:
-            return jsonify({"error": "auto_approve_limit_usd must be ≥ 0"}), 400
-        set_setting("auto_approve_limit_usd", limit)
+            return jsonify({"error": "clp_per_usd must be a number"}), 400
+        if clp_per_usd <= 0:
+            return jsonify({"error": "clp_per_usd must be greater than zero"}), 400
+        set_setting("clp_per_usd", clp_per_usd)
     return get_settings()
 
 
@@ -541,67 +709,6 @@ def list_suppliers():
     with db() as conn:
         rows = conn.execute("SELECT data_json FROM suppliers ORDER BY name").fetchall()
     return jsonify([json.loads(r["data_json"]) for r in rows])
-
-
-# ------------------------------------------------------------ dev fixtures
-
-@app.cli.command("demo-fixtures")
-def demo_fixtures():
-    """Replay docs/examples envelopes through process_envelope. Dev-only —
-    docs/ is gitignored and never reaches the Heroku slug."""
-    if not EXAMPLES_DIR.exists():
-        raise SystemExit(f"{EXAMPLES_DIR} not found — demo-fixtures is a local dev tool "
-                         "(docs/ is gitignored and absent from deploys)")
-    init_db()
-
-    def replay(intake_file, triage_file, escalate=False):
-        tri = json.loads((EXAMPLES_DIR / triage_file).read_text())
-        pr = tri["request"]["pr_number"]
-        emp = tri["employee"]["id"]
-        raw = (json.loads((EXAMPLES_DIR / intake_file).read_text())["message"]
-               if intake_file else tri["request"].get("justification", ""))
-        ts = now()
-        req = tri["request"]
-        with db() as conn:
-            conn.execute("INSERT OR REPLACE INTO purchase_requests"
-                         " (pr_number, employee_id, raw_message, status, created_at, updated_at)"
-                         " VALUES (?,?,?, 'submitted', ?, ?)", (pr, emp, raw, ts, ts))
-            if not intake_file:
-                # No intake envelope to replay — backfill the fields intake would have set.
-                conn.execute(
-                    "UPDATE purchase_requests SET justification=?, urgency=?,"
-                    " detected_language=?, estimated_total_usd=?, unmatched_json=?"
-                    " WHERE pr_number=?",
-                    (req.get("justification"), req.get("urgency"), req.get("detected_language"),
-                     req.get("estimated_total_usd"), json.dumps(req.get("unmatched", [])), pr))
-                for li in req.get("line_items", []):
-                    conn.execute(
-                        "INSERT INTO request_items (pr_number, catalog_item_id, sku, name,"
-                        " quantity, unit_price_usd, line_total_usd) VALUES (?,?,?,?,?,?,?)",
-                        (pr, li.get("catalog_item_id"), li.get("sku"), li.get("name"),
-                         li.get("quantity"), li.get("unit_price_usd"), li.get("line_total_usd")))
-        for mode, fname in (("intake", intake_file), ("triage", triage_file)):
-            if not fname:
-                continue
-            kid = f"fixture-{uuid.uuid4()}"
-            with db() as conn:
-                conn.execute("INSERT INTO kickoffs (kickoff_id, pr_number, mode, state,"
-                             " created_at, updated_at) VALUES (?,?,?, 'pending', ?, ?)",
-                             (kid, pr, mode, now(), now()))
-            process_envelope(pr, kid, json.loads((EXAMPLES_DIR / fname).read_text()), chain=False)
-        if escalate:
-            with db() as conn:
-                conn.execute("INSERT OR REPLACE INTO pending_reviews"
-                             " (pr_number, callback_url, memo, received_at) VALUES (?,?,?,?)",
-                             (pr, FIXTURE_CALLBACK, "Fixture escalation — Approve/Reject are no-ops.",
-                              now()))
-        print(f"  {pr} ← {triage_file}")
-
-    print("Replaying fixtures:")
-    replay("A_happy_es_intake.json", "A_happy_es_triage.json")
-    replay(None, "B_escalation_triage.json", escalate=True)
-    replay(None, "C_fraud_triage.json")
-    print("Done — board now shows one card per state.")
 
 
 init_db()

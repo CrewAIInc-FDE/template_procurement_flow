@@ -241,7 +241,8 @@ img { max-width: 100%; }
   display: inline-flex; align-items: center; gap: 5px;
 }
 .chip-status-submitted { background: var(--card-grey); color: var(--text-2); }
-.chip-status-in_triage { background: var(--amber-soft); color: var(--amber); }
+.chip-status-awaiting_quotes { background: var(--amber-soft); color: var(--amber); }
+.chip-status-reviewing_quotes { background: var(--amber-soft); color: var(--amber); }
 .chip-status-awaiting_review { background: var(--coral); color: #fff; }
 .chip-status-approved { background: var(--green-soft); color: var(--green); }
 .chip-status-rejected { background: var(--red-soft); color: var(--red); }
@@ -259,7 +260,7 @@ img { max-width: 100%; }
 }
 .drawer {
   position: fixed; top: 0; right: 0; bottom: 0; z-index: 70;
-  width: min(620px, 100vw);
+  width: min(880px, 100vw);
   background: var(--paper); box-shadow: var(--shadow-2);
   animation: slide-in .26s var(--ease);
   overflow-y: auto;
@@ -299,10 +300,39 @@ img { max-width: 100%; }
 .items-table tfoot td { font-weight: 600; border-top: 2px solid var(--line); }
 .items-sku { display: block; font-family: var(--mono); font-size: 10px; color: var(--text-3); margin-top: 2px; }
 
+/* editable quote proposal */
+.quote-table-wrap { overflow-x: auto; margin: 12px -4px 14px; }
+.quote-table { width: 100%; min-width: 760px; border-collapse: collapse; font-size: 12.5px; }
+.quote-table th {
+  font-family: var(--mono); font-size: 9px; letter-spacing: .1em; text-transform: uppercase;
+  color: var(--text-3); font-weight: 500; text-align: left; padding: 0 8px 8px;
+}
+.quote-table td { padding: 9px 8px; border-top: 1px solid var(--line-soft); vertical-align: middle; }
+.quote-table .num { text-align: right; font-family: var(--mono); font-variant-numeric: tabular-nums; white-space: nowrap; }
+.quote-table th.num { text-align: right; }
+.quote-main:hover { background: color-mix(in srgb, var(--coral-soft) 35%, white); }
+.quote-context td { padding-top: 0; border-top: 0; color: var(--text-3); font-size: 11px; }
+.quote-select {
+  width: 100%; min-width: 210px; min-height: 38px; padding: 7px 28px 7px 9px;
+  border: 1px solid var(--line); border-radius: 8px; background: var(--card);
+  color: var(--coal); font: 11px var(--mono);
+}
+.quote-select:focus { outline: 2px solid var(--coral); outline-offset: 0; }
+.quote-select:disabled { color: var(--text-2); background: var(--paper); opacity: 1; }
+.quote-score { color: var(--green); font-weight: 600; }
+.quote-marker {
+  display: inline-flex; margin: 0 6px 3px 0; padding: 3px 7px; border-radius: 999px;
+  background: var(--green-soft); color: var(--green); font: 9px var(--mono);
+  letter-spacing: .08em; text-transform: uppercase;
+}
+.quote-risks { display: inline; color: var(--text-3); }
+.po-doc + .po-doc { margin-top: 12px; }
+.po-meta { margin-bottom: 12px; color: var(--text-3); font: 10px var(--mono); letter-spacing: .1em; text-transform: uppercase; }
+
 .unmatched { margin-top: 10px; padding: 10px 14px; border-radius: var(--r-s); background: var(--amber-soft); color: var(--amber); font-size: 13px; }
 .unmatched ul { margin: 6px 0 0; padding-left: 18px; }
 
-/* screening / sourcing */
+/* screening / supplier context */
 .verdict-row { display: flex; align-items: center; gap: 8px; margin-bottom: 10px; flex-wrap: wrap; }
 .reasoning { margin: 0; color: var(--text-2); font-size: 13.5px; }
 .fact-list { margin: 10px 0 0; padding: 0; list-style: none; }

@@ -10,30 +10,33 @@ const I18N = {
     wordmark_em: "Portal",
     board_label: "LIVE PIPELINE",
     title: 'Purchase requests, <em>live</em>',
-    subtitle: "Describe what you need in the chat. AI agents structure, screen and source every request — escalations wait for a human decision right here on the board.",
-    col_new: "New", col_processing: "Processing", col_done: "Done",
-    empty_new: "NO NEW REQUESTS", empty_processing: "NOTHING IN FLIGHT", empty_done: "NOTHING DECIDED YET",
-    st_submitted: "Submitted", st_in_triage: "In triage", st_awaiting_review: "Awaiting review",
+    subtitle: "Open a request in chat, collect supplier quotes by email, then review and adjust the proposed awards before purchase orders are generated.",
+    col_awaiting: "Awaiting Quotes", col_review: "Quote Review", col_complete: "Complete",
+    empty_awaiting: "NO REQUESTS AWAITING QUOTES", empty_review: "NOTHING TO REVIEW", empty_complete: "NOTHING COMPLETED YET",
+    st_submitted: "Structuring", st_awaiting_quotes: "Awaiting quotes", st_reviewing_quotes: "Reviewing quotes", st_awaiting_review: "Awaiting review",
     st_approved: "Approved", st_rejected: "Rejected",
-    phase_screening: "Screening", phase_sourcing: "Sourcing",
+    phase_screening: "Screening", phase_gmail: "Scanning Gmail", phase_approval: "Applying decision",
     alerts_n: "alerts", alert_1: "alert", sev_high: "High", sev_medium: "Medium",
     urgency_high: "Urgent",
     requested_by: "Requested by",
-    sec_items: "Line items", sec_screening: "Screening", sec_sourcing: "Sourcing",
-    sec_alerts: "Alerts", sec_document: "Document", sec_review: "Human review", sec_memo: "Approval memo",
+    sec_items: "Line items", sec_screening: "Screening", sec_quotes: "Quote proposal",
+    sec_alerts: "Alerts", sec_documents: "Purchase orders", sec_review: "Human review", sec_warnings: "Quote warnings",
     th_item: "Item", th_qty: "Qty", th_unit: "Unit", th_total: "Total",
     estimated_total: "Estimated total", intake_wait: "STRUCTURING REQUEST…",
     unmatched: "Not matched to the catalog:",
     verdict_pass: "Pass", verdict_flag: "Flagged", verdict_reject: "Reject",
-    confidence: "confidence", runner_up: "Runner-up", risks: "Key risks",
-    review_prompt: "This request exceeds auto-approval policy. Approve to generate the purchase order, or reject it.",
+    confidence: "confidence", runner_up: "Runner-up", risks: "Risks",
+    review_prompt: "Review the suggested supplier for each covered item. You can change any selection before approving.",
     approve: "Approve", reject: "Reject", decision_sent: "DECISION SENT — RESUMING FLOW…",
+    review_quotes: "Review quotes", review_started: "SCANNING THE INBOX FOR THIS PR…",
+    th_supplier_choice: "Supplier / quote", th_price_score: "Price", th_delivery: "Delivery", th_delivery_score: "Speed", th_score: "Score",
+    cheapest: "Least price", fastest: "Fastest", days: "days", no_risks: "No recorded risks", outstanding: "Still awaiting quotes",
     confirm_reject: "Reject this purchase request?",
     chat_title: "Procurement assistant", chat_status: "online",
     chat_intro: "Hi, I'm your procurement assistant — describe what you need and why.",
-    chat_ack: "Thanks! Your request was submitted and is being processed — watch the board.",
+    chat_ack: "{pr} opened and awaiting quotes.",
     chat_placeholder: "Describe what you need…",
-    chat_onboard: "on the board",
+    chat_onboard: "Open request",
     submit_error: "Could not submit the request — is the server up?",
     decide_error: "Could not deliver the decision. Try again.",
     manage: "Manage", manage_title: "Manage portal",
@@ -43,8 +46,8 @@ const I18N = {
     f_name: "Name", f_email: "Email", f_role: "Role", f_department: "Department", f_limit: "Approval limit (USD)",
     th_person: "Person", th_role: "Role", th_limit: "Limit", th_product: "Product", th_category: "Category",
     th_price: "Unit price", th_supplier: "Supplier", th_location: "Location", th_ontime: "On-time", th_categories: "Categories",
-    policy_help: "Requests whose sourced total exceeds this threshold require human review — even from an approver within their own limit.",
-    limit_label: "Auto-approve threshold (USD)",
+    policy_help: "Required conversion rate used to compare CLP and USD quote lines. Quote scoring stays fixed at 50% price and 50% delivery.",
+    limit_label: "CLP per USD",
     readonly_note: "Backend-controlled — managed in the deployment",
     products_help: "Catalog the AI matches requests against.",
     suppliers_help: "Vendors the AI sources from.",
@@ -56,30 +59,33 @@ const I18N = {
     wordmark_em: "Portal",
     board_label: "PIPELINE EN VIVO",
     title: 'Solicitudes de compra, <em>en vivo</em>',
-    subtitle: "Describe lo que necesitas en el chat. Los agentes de IA estructuran, evalúan y cotizan cada solicitud — las escaladas esperan una decisión humana aquí mismo en el tablero.",
-    col_new: "Nuevas", col_processing: "En proceso", col_done: "Resueltas",
-    empty_new: "SIN SOLICITUDES NUEVAS", empty_processing: "NADA EN CURSO", empty_done: "NADA RESUELTO AÚN",
-    st_submitted: "Enviada", st_in_triage: "En análisis", st_awaiting_review: "Esperando revisión",
+    subtitle: "Abre una solicitud en el chat, recibe cotizaciones por correo y luego revisa y ajusta la propuesta antes de generar las órdenes de compra.",
+    col_awaiting: "Esperando cotizaciones", col_review: "Revisión de cotizaciones", col_complete: "Completas",
+    empty_awaiting: "SIN SOLICITUDES ESPERANDO COTIZACIÓN", empty_review: "NADA PARA REVISAR", empty_complete: "NADA COMPLETADO AÚN",
+    st_submitted: "Estructurando", st_awaiting_quotes: "Esperando cotizaciones", st_reviewing_quotes: "Revisando cotizaciones", st_awaiting_review: "Esperando revisión",
     st_approved: "Aprobada", st_rejected: "Rechazada",
-    phase_screening: "Evaluando", phase_sourcing: "Cotizando",
+    phase_screening: "Evaluando", phase_gmail: "Revisando Gmail", phase_approval: "Aplicando decisión",
     alerts_n: "alertas", alert_1: "alerta", sev_high: "Alta", sev_medium: "Media",
     urgency_high: "Urgente",
     requested_by: "Solicitado por",
-    sec_items: "Ítems", sec_screening: "Evaluación", sec_sourcing: "Cotización",
-    sec_alerts: "Alertas", sec_document: "Documento", sec_review: "Revisión humana", sec_memo: "Memo de aprobación",
+    sec_items: "Ítems", sec_screening: "Evaluación", sec_quotes: "Propuesta de compra",
+    sec_alerts: "Alertas", sec_documents: "Órdenes de compra", sec_review: "Revisión humana", sec_warnings: "Alertas de cotización",
     th_item: "Ítem", th_qty: "Cant.", th_unit: "Unitario", th_total: "Total",
     estimated_total: "Total estimado", intake_wait: "ESTRUCTURANDO SOLICITUD…",
     unmatched: "Sin match en el catálogo:",
     verdict_pass: "Aprobada", verdict_flag: "Con alertas", verdict_reject: "Rechazada",
-    confidence: "confianza", runner_up: "Alternativa", risks: "Riesgos clave",
-    review_prompt: "Esta solicitud excede la política de aprobación automática. Aprueba para generar la orden de compra, o recházala.",
+    confidence: "confianza", runner_up: "Alternativa", risks: "Riesgos",
+    review_prompt: "Revisa el proveedor sugerido para cada ítem cubierto. Puedes cambiar cualquier selección antes de aprobar.",
     approve: "Aprobar", reject: "Rechazar", decision_sent: "DECISIÓN ENVIADA — RETOMANDO FLUJO…",
+    review_quotes: "Revisar cotizaciones", review_started: "REVISANDO EL BUZÓN PARA ESTA PR…",
+    th_supplier_choice: "Proveedor / cotización", th_price_score: "Precio", th_delivery: "Entrega", th_delivery_score: "Rapidez", th_score: "Puntaje",
+    cheapest: "Menor precio", fastest: "Más rápida", days: "días", no_risks: "Sin riesgos registrados", outstanding: "Aún esperando cotizaciones",
     confirm_reject: "¿Rechazar esta solicitud de compra?",
     chat_title: "Asistente de compras", chat_status: "en línea",
     chat_intro: "¡Hola! Soy tu asistente de compras — cuéntame qué necesitas y para qué.",
-    chat_ack: "¡Gracias! Tu solicitud fue enviada y está siendo procesada — sigue el tablero.",
+    chat_ack: "{pr} fue abierta y está esperando cotizaciones.",
     chat_placeholder: "Describe lo que necesitas…",
-    chat_onboard: "en el tablero",
+    chat_onboard: "Abrir solicitud",
     submit_error: "No se pudo enviar la solicitud — ¿está activo el servidor?",
     decide_error: "No se pudo entregar la decisión. Intenta de nuevo.",
     manage: "Gestionar", manage_title: "Gestionar portal",
@@ -89,8 +95,8 @@ const I18N = {
     f_name: "Nombre", f_email: "Correo", f_role: "Cargo", f_department: "Departamento", f_limit: "Límite de aprobación (USD)",
     th_person: "Persona", th_role: "Cargo", th_limit: "Límite", th_product: "Producto", th_category: "Categoría",
     th_price: "Precio unit.", th_supplier: "Proveedor", th_location: "Ubicación", th_ontime: "A tiempo", th_categories: "Categorías",
-    policy_help: "Las solicitudes cuyo total cotizado supera este umbral requieren revisión humana — incluso de un aprobador dentro de su propio límite.",
-    limit_label: "Umbral de auto-aprobación (USD)",
+    policy_help: "Tipo de cambio obligatorio para comparar cotizaciones en CLP y USD. El puntaje queda fijo en 50% precio y 50% entrega.",
+    limit_label: "CLP por USD",
     readonly_note: "Controlado por el backend — se gestiona en el deployment",
     products_help: "Catálogo con el que la IA compara las solicitudes.",
     suppliers_help: "Proveedores desde los que cotiza la IA.",
@@ -102,30 +108,33 @@ const I18N = {
     wordmark_em: "Portal",
     board_label: "PIPELINE AO VIVO",
     title: 'Pedidos de compra, <em>ao vivo</em>',
-    subtitle: "Descreva o que você precisa no chat. Agentes de IA estruturam, avaliam e cotam cada pedido — escalações aguardam uma decisão humana aqui mesmo no quadro.",
-    col_new: "Novos", col_processing: "Em andamento", col_done: "Concluídos",
-    empty_new: "SEM PEDIDOS NOVOS", empty_processing: "NADA EM ANDAMENTO", empty_done: "NADA CONCLUÍDO AINDA",
-    st_submitted: "Enviado", st_in_triage: "Em análise", st_awaiting_review: "Aguardando revisão",
+    subtitle: "Abra um pedido no chat, receba cotações por e-mail e depois revise e ajuste a proposta antes de gerar as ordens de compra.",
+    col_awaiting: "Aguardando cotações", col_review: "Revisão de cotações", col_complete: "Concluídos",
+    empty_awaiting: "SEM PEDIDOS AGUARDANDO COTAÇÃO", empty_review: "NADA PARA REVISAR", empty_complete: "NADA CONCLUÍDO AINDA",
+    st_submitted: "Estruturando", st_awaiting_quotes: "Aguardando cotações", st_reviewing_quotes: "Revisando cotações", st_awaiting_review: "Aguardando revisão",
     st_approved: "Aprovado", st_rejected: "Rejeitado",
-    phase_screening: "Avaliando", phase_sourcing: "Cotando",
+    phase_screening: "Avaliando", phase_gmail: "Lendo Gmail", phase_approval: "Aplicando decisão",
     alerts_n: "alertas", alert_1: "alerta", sev_high: "Alta", sev_medium: "Média",
     urgency_high: "Urgente",
     requested_by: "Solicitado por",
-    sec_items: "Itens", sec_screening: "Avaliação", sec_sourcing: "Cotação",
-    sec_alerts: "Alertas", sec_document: "Documento", sec_review: "Revisão humana", sec_memo: "Memo de aprovação",
+    sec_items: "Itens", sec_screening: "Avaliação", sec_quotes: "Proposta de compra",
+    sec_alerts: "Alertas", sec_documents: "Ordens de compra", sec_review: "Revisão humana", sec_warnings: "Alertas de cotação",
     th_item: "Item", th_qty: "Qtd.", th_unit: "Unitário", th_total: "Total",
     estimated_total: "Total estimado", intake_wait: "ESTRUTURANDO PEDIDO…",
     unmatched: "Sem correspondência no catálogo:",
     verdict_pass: "Aprovado", verdict_flag: "Com alertas", verdict_reject: "Rejeitado",
-    confidence: "confiança", runner_up: "Alternativa", risks: "Riscos-chave",
-    review_prompt: "Este pedido excede a política de aprovação automática. Aprove para gerar a ordem de compra, ou rejeite.",
+    confidence: "confiança", runner_up: "Alternativa", risks: "Riscos",
+    review_prompt: "Revise o fornecedor sugerido para cada item coberto. Você pode alterar qualquer seleção antes de aprovar.",
     approve: "Aprovar", reject: "Rejeitar", decision_sent: "DECISÃO ENVIADA — RETOMANDO FLUXO…",
+    review_quotes: "Revisar cotações", review_started: "LENDO A CAIXA DE ENTRADA PARA ESTA PR…",
+    th_supplier_choice: "Fornecedor / cotação", th_price_score: "Preço", th_delivery: "Entrega", th_delivery_score: "Rapidez", th_score: "Pontuação",
+    cheapest: "Menor preço", fastest: "Mais rápida", days: "dias", no_risks: "Sem riscos registrados", outstanding: "Ainda aguardando cotações",
     confirm_reject: "Rejeitar este pedido de compra?",
     chat_title: "Assistente de compras", chat_status: "online",
     chat_intro: "Olá! Sou seu assistente de compras — descreva o que você precisa e por quê.",
-    chat_ack: "Obrigado! Seu pedido foi enviado e está sendo processado — acompanhe o quadro.",
+    chat_ack: "{pr} foi aberto e está aguardando cotações.",
     chat_placeholder: "Descreva o que você precisa…",
-    chat_onboard: "no quadro",
+    chat_onboard: "Abrir pedido",
     submit_error: "Não foi possível enviar o pedido — o servidor está no ar?",
     decide_error: "Não foi possível entregar a decisão. Tente de novo.",
     manage: "Gerenciar", manage_title: "Gerenciar portal",
@@ -135,8 +144,8 @@ const I18N = {
     f_name: "Nome", f_email: "E-mail", f_role: "Cargo", f_department: "Departamento", f_limit: "Limite de aprovação (USD)",
     th_person: "Pessoa", th_role: "Cargo", th_limit: "Limite", th_product: "Produto", th_category: "Categoria",
     th_price: "Preço unit.", th_supplier: "Fornecedor", th_location: "Local", th_ontime: "No prazo", th_categories: "Categorias",
-    policy_help: "Pedidos cujo total cotado excede este limite exigem revisão humana — mesmo de um aprovador dentro do próprio limite.",
-    limit_label: "Limite de auto-aprovação (USD)",
+    policy_help: "Câmbio obrigatório para comparar cotações em CLP e USD. A pontuação permanece fixa em 50% preço e 50% entrega.",
+    limit_label: "CLP por USD",
     readonly_note: "Controlado pelo backend — gerenciado no deployment",
     products_help: "Catálogo com o qual a IA compara os pedidos.",
     suppliers_help: "Fornecedores dos quais a IA cota.",
@@ -159,6 +168,10 @@ const fmtUSD = (n) => n == null ? "" :
   new Intl.NumberFormat(lang === "en" ? "en-US" : lang === "es" ? "es-CL" : "pt-BR",
     { style: "currency", currency: "USD", maximumFractionDigits: 0 }).format(n);
 
+const fmtMoney = (n, currency) => n == null ? "" :
+  new Intl.NumberFormat(lang === "en" ? "en-US" : lang === "es" ? "es-CL" : "pt-BR",
+    { style: "currency", currency, maximumFractionDigits: currency === "CLP" ? 0 : 2 }).format(n);
+
 const rel = (iso) => {
   if (!iso) return "";
   const m = Math.max(0, Math.round((Date.now() - new Date(iso).getTime()) / 60000));
@@ -177,7 +190,11 @@ function toast(msg, isError) {
 
 async function api(path, opts) {
   const res = await fetch(path, opts);
-  if (!res.ok) throw new Error(`${res.status}`);
+  if (!res.ok) {
+    let message = `${res.status}`;
+    try { message = (await res.json()).error || message; } catch { /* non-JSON error */ }
+    throw new Error(message);
+  }
   return res.status === 204 ? null : res.json();
 }
 
@@ -243,14 +260,18 @@ function setupPersona() {
 
 /* ---------------------------------------------------------------- board */
 
-const COLS = { submitted: "new", in_triage: "processing", awaiting_review: "processing", approved: "done", rejected: "done" };
+const COLS = {
+  submitted: "awaiting", awaiting_quotes: "awaiting",
+  reviewing_quotes: "review", awaiting_review: "review",
+  approved: "complete", rejected: "complete",
+};
 let lastBoardJson = "";
 let board = [];
 const prevStatus = {};
 const decisionSent = {};
 
 function chipStatus(r) {
-  const dot = (r.status === "submitted" || r.status === "in_triage")
+  const dot = (r.status === "submitted" || r.status === "reviewing_quotes")
     ? '<span class="blink-dot" aria-hidden="true"></span>' : "";
   return `<span class="chip chip-status-${r.status}">${dot}${esc(t("st_" + r.status))}</span>`;
 }
@@ -258,7 +279,7 @@ function chipStatus(r) {
 function cardHtml(r) {
   const summary = r.justification || r.raw_message || "";
   const badges = [];
-  if (r.status === "in_triage" && r.phase)
+  if (r.status === "reviewing_quotes" && r.phase)
     badges.push(`<span class="chip chip-phase"><span class="blink-dot"></span>${esc(t("phase_" + r.phase))}…</span>`);
   if (r.alerts_count > 0)
     badges.push(`<span class="chip chip-alerts">${ALERT_SVG}${r.alerts_count} ${esc(r.alerts_count === 1 ? t("alert_1") : t("alerts_n"))}</span>`);
@@ -282,9 +303,9 @@ function cardHtml(r) {
 }
 
 function renderBoard() {
-  const byCol = { new: [], processing: [], done: [] };
-  for (const r of board) (byCol[COLS[r.status]] || byCol.new).push(r);
-  for (const col of ["new", "processing", "done"]) {
+  const byCol = { awaiting: [], review: [], complete: [] };
+  for (const r of board) (byCol[COLS[r.status]] || byCol.awaiting).push(r);
+  for (const col of ["awaiting", "review", "complete"]) {
     const rows = byCol[col];
     $(`#count-${col}`).textContent = rows.length;
     $(`#col-${col}`).innerHTML = rows.length
@@ -329,6 +350,41 @@ function verdictChip(v) {
   return `<span class="chip chip-status-${cls}">${esc(label)}</span>`;
 }
 
+function quoteBadges(option) {
+  return [
+    option.is_cheapest ? `<span class="quote-marker">${esc(t("cheapest"))}</span>` : "",
+    option.is_fastest ? `<span class="quote-marker">${esc(t("fastest"))}</span>` : "",
+  ].join("");
+}
+
+function quoteReviewHtml(review, actionable) {
+  if (!review?.lines?.length) return "";
+  const rows = review.lines.map((line) => {
+    const selected = line.options.find((o) => o.quote_id === line.suggested_quote_id) || line.options[0];
+    const options = line.options.map((o) => `<option value="${esc(o.quote_id)}"${o.quote_id === selected.quote_id ? " selected" : ""}>
+      ${esc(o.supplier_name)} · ${esc(o.quote_id)} · ${esc(o.total_score.toFixed(1))}
+    </option>`).join("");
+    const risks = selected.risk_notes?.length ? selected.risk_notes.join(" · ") : t("no_risks");
+    return `<tr class="quote-main" data-quote-row="${line.request_item_id}">
+      <td><strong>${esc(line.item_name)}</strong><span class="items-sku">${esc(line.sku || line.catalog_item_id)} · ${line.quantity}</span></td>
+      <td><select class="quote-select" data-award-item="${line.request_item_id}" ${actionable ? "" : "disabled"}>${options}</select></td>
+      <td class="num" data-metric="price">${esc(fmtMoney(selected.line_total, selected.currency))}<span class="items-sku">${esc(fmtUSD(selected.line_total_usd))}</span></td>
+      <td class="num" data-metric="price-score">${esc(selected.price_score.toFixed(1))}</td>
+      <td class="num" data-metric="delivery">${selected.delivery_days} ${esc(t("days"))}</td>
+      <td class="num" data-metric="delivery-score">${esc(selected.delivery_score.toFixed(1))}</td>
+      <td class="num quote-score" data-metric="score">${esc(selected.total_score.toFixed(1))}</td>
+    </tr>
+    <tr class="quote-context" data-quote-context="${line.request_item_id}"><td colspan="7">
+      <span data-metric="markers">${quoteBadges(selected)}</span>
+      <span class="quote-risks" data-metric="risks">${esc(risks)}</span>
+    </td></tr>`;
+  }).join("");
+  return `<div class="quote-table-wrap"><table class="quote-table">
+    <thead><tr><th>${esc(t("th_item"))}</th><th>${esc(t("th_supplier_choice"))}</th><th class="num">${esc(t("th_total"))}</th><th class="num">${esc(t("th_price_score"))}</th><th class="num">${esc(t("th_delivery"))}</th><th class="num">${esc(t("th_delivery_score"))}</th><th class="num">${esc(t("th_score"))}</th></tr></thead>
+    <tbody>${rows}</tbody>
+  </table></div>`;
+}
+
 function detailHtml(d) {
   const summary = d.justification || d.raw_message || "";
   const parts = [];
@@ -346,12 +402,22 @@ function detailHtml(d) {
       <span class="sep">·</span>${esc(d.employee?.role || "")}
       <span class="sep">·</span><span class="mono">${esc(rel(d.created_at))}</span></p>`);
 
-  /* review actions — the demo money shot goes first */
+  if (d.status === "awaiting_quotes") {
+    parts.push(`<div class="section">${sectionHead(t("sec_review"))}<div class="review-box">
+      <p>${d.outstanding_items?.length} ${esc(t("outstanding"))}</p>
+      <button class="btn btn-approve" data-review-quotes>${esc(t("review_quotes"))}</button>
+    </div></div>`);
+  } else if (d.status === "reviewing_quotes") {
+    parts.push(`<div class="section">${sectionHead(t("sec_review"))}<div class="review-box">
+      <div class="decision-note"><span class="spinner" aria-hidden="true"></span>${esc(t("review_started"))}</div>
+    </div></div>`);
+  }
+
   if (d.status === "awaiting_review") {
     parts.push(`<div class="section">${sectionHead(t("sec_review"))}
       <div class="review-box">`);
     if (d.pending_review && !decisionSent[d.pr_number]) {
-      parts.push(`<p>${esc(t("review_prompt"))}</p>
+      parts.push(`<p>${esc(t("review_prompt"))}</p>${quoteReviewHtml(d.quote_review, true)}
         <div class="review-actions">
           <button class="btn btn-approve" data-decide="approve">${esc(t("approve"))}</button>
           <button class="btn btn-reject" data-decide="reject">${esc(t("reject"))}</button>
@@ -362,14 +428,13 @@ function detailHtml(d) {
     parts.push(`</div></div>`);
   }
 
-  /* line items */
   parts.push(`<div class="section">${sectionHead(t("sec_items"))}`);
   if (d.items?.length) {
     const rows = d.items.map((it) => `
-      <tr><td>${esc(it.name)}<span class="items-sku">${esc(it.catalog_item_id || "")}${it.sku ? " · " + esc(it.sku) : ""}</span></td>
+      <tr><td>${esc(it.name)}<span class="items-sku">${esc(it.catalog_item_id || "")}${it.sku ? " · " + esc(it.sku) : ""}${it.po_number ? " · " + esc(it.po_number) : ""}</span></td>
       <td class="num">${it.quantity}</td>
       <td class="num">${esc(fmtUSD(it.unit_price_usd))}</td>
-      <td class="num">${esc(fmtUSD(it.line_total_usd))}</td></tr>`).join("");
+      <td class="num">${esc(fmtUSD(it.line_total_usd))}${it.awarded_supplier ? `<span class="items-sku">${esc(it.awarded_supplier)}</span>` : ""}</td></tr>`).join("");
     parts.push(`<div class="panel"><table class="items-table">
       <thead><tr><th>${esc(t("th_item"))}</th><th class="num">${esc(t("th_qty"))}</th><th class="num">${esc(t("th_unit"))}</th><th class="num">${esc(t("th_total"))}</th></tr></thead>
       <tbody>${rows}</tbody>
@@ -383,7 +448,6 @@ function detailHtml(d) {
   }
   parts.push(`</div>`);
 
-  /* screening */
   if (d.screening) {
     const s = d.screening;
     parts.push(`<div class="section">${sectionHead(t("sec_screening"))}<div class="panel">
@@ -394,19 +458,8 @@ function detailHtml(d) {
     parts.push(`</div></div>`);
   }
 
-  /* sourcing */
-  if (d.sourcing) {
-    const s = d.sourcing;
-    parts.push(`<div class="section">${sectionHead(t("sec_sourcing"))}<div class="panel">
-      <div class="supplier-row">
-        <span class="supplier-name">${esc(s.recommended_supplier)}</span>
-        <span class="supplier-total">${esc(fmtUSD(s.total_cost_usd))}</span>
-      </div>
-      <div class="verdict-row"><span class="chip chip-lang">${esc(s.confidence)} ${esc(t("confidence"))}</span></div>
-      ${s.runner_up ? `<p class="runner-up">${esc(t("runner_up"))}: ${esc(s.runner_up)}</p>` : ""}
-      <p class="reasoning">${esc(s.rationale || "")}</p>
-      ${s.key_risks?.length ? `<ul class="fact-list">${s.key_risks.map((r) => `<li>${esc(r)}</li>`).join("")}</ul>` : ""}
-    </div></div>`);
+  if (d.quote_review?.lines?.length && d.status !== "awaiting_review") {
+    parts.push(`<div class="section">${sectionHead(t("sec_quotes"))}<div class="panel">${quoteReviewHtml(d.quote_review, false)}</div></div>`);
   }
 
   /* alerts */
@@ -419,14 +472,12 @@ function detailHtml(d) {
     </div></div>`);
   }
 
-  /* documents */
-  const doc =
-    d.status === "approved" && d.purchase_order_html ? d.purchase_order_html :
-    d.status === "rejected" && d.rejection_note_html ? d.rejection_note_html :
-    d.status === "awaiting_review" && d.escalation_memo_html ? d.escalation_memo_html : null;
-  if (doc) {
-    const label = d.status === "awaiting_review" ? t("sec_memo") : t("sec_document");
-    parts.push(`<div class="section">${sectionHead(label)}<div class="doc">${doc}</div></div>`);
+  if (d.purchase_orders?.length) {
+    parts.push(`<div class="section">${sectionHead(t("sec_documents"))}${d.purchase_orders.map((po) =>
+      `<div class="doc po-doc"><div class="po-meta">${esc(po.po_number)} · ${esc(po.supplier_name)}</div>${po.html}</div>`).join("")}</div>`);
+  }
+  if (d.status === "rejected" && d.rejection_note_html) {
+    parts.push(`<div class="section">${sectionHead(t("sec_documents"))}<div class="doc">${d.rejection_note_html}</div></div>`);
   }
 
   return parts.join("");
@@ -434,6 +485,34 @@ function detailHtml(d) {
 
 function bindDrawer(d) {
   $("#drawer-close")?.addEventListener("click", closeDrawer);
+  document.querySelectorAll("[data-award-item]").forEach((select) =>
+    select.addEventListener("change", () => {
+      const itemId = Number(select.dataset.awardItem);
+      const line = d.quote_review?.lines?.find((candidate) => candidate.request_item_id === itemId);
+      const option = line?.options?.find((candidate) => candidate.quote_id === select.value);
+      const row = document.querySelector(`[data-quote-row="${itemId}"]`);
+      const context = document.querySelector(`[data-quote-context="${itemId}"]`);
+      if (!option || !row || !context) return;
+      row.querySelector('[data-metric="price"]').innerHTML = `${esc(fmtMoney(option.line_total, option.currency))}<span class="items-sku">${esc(fmtUSD(option.line_total_usd))}</span>`;
+      row.querySelector('[data-metric="price-score"]').textContent = option.price_score.toFixed(1);
+      row.querySelector('[data-metric="delivery"]').textContent = `${option.delivery_days} ${t("days")}`;
+      row.querySelector('[data-metric="delivery-score"]').textContent = option.delivery_score.toFixed(1);
+      row.querySelector('[data-metric="score"]').textContent = option.total_score.toFixed(1);
+      context.querySelector('[data-metric="markers"]').innerHTML = quoteBadges(option);
+      context.querySelector('[data-metric="risks"]').textContent = option.risk_notes?.length ? option.risk_notes.join(" · ") : t("no_risks");
+    }));
+  $("[data-review-quotes]")?.addEventListener("click", async (ev) => {
+    ev.currentTarget.disabled = true;
+    try {
+      await api(`/api/requests/${d.pr_number}/review-quotes`, { method: "POST" });
+      lastDetailJson = "";
+      await pollBoard();
+      await refreshDetail();
+    } catch (error) {
+      ev.currentTarget.disabled = false;
+      toast(error.message || t("decide_error"), true);
+    }
+  });
   document.querySelectorAll("[data-decide]").forEach((btn) =>
     btn.addEventListener("click", async () => {
       const action = btn.dataset.decide;
@@ -442,7 +521,15 @@ function bindDrawer(d) {
       lastDetailJson = "";
       refreshDetail();
       try {
-        await api(`/api/requests/${d.pr_number}/${action}`, { method: "POST" });
+        const opts = { method: "POST", headers: { "Content-Type": "application/json" } };
+        if (action === "approve") {
+          opts.body = JSON.stringify({ awards: Array.from(document.querySelectorAll("[data-award-item]")).map((select) => ({
+            request_item_id: Number(select.dataset.awardItem), quote_id: select.value,
+          })) });
+        } else {
+          opts.body = "{}";
+        }
+        await api(`/api/requests/${d.pr_number}/${action}`, opts);
       } catch {
         delete decisionSent[d.pr_number];
         lastDetailJson = "";
@@ -521,18 +608,17 @@ function setupChat() {
     msgEl("msg-user", esc(message));
     const typing = msgEl("msg-bot", '<span class="typing"><i></i><i></i><i></i></span>');
 
-    // The ack is canned and NEVER waits on the AI backend (see frontend-plan.md).
-    setTimeout(() => { typing.remove(); msgEl("msg-bot", esc(t("chat_ack"))); }, 900);
-
     api("/api/requests", {
       method: "POST",
       headers: { "Content-Type": "application/json" },
       body: JSON.stringify({ employee_id: personaId, message }),
-    }).then((res) => setTimeout(() => {  // after the canned ack, never before
+    }).then((res) => {
+      typing.remove();
+      msgEl("msg-bot", esc(t("chat_ack").replace("{pr}", res.pr_number)));
       const el = msgEl("msg-sys", `<span class="pr-link">${esc(res.pr_number)}</span> · ${esc(t("chat_onboard"))}`);
       el.querySelector(".pr-link").addEventListener("click", () => openDrawer(res.pr_number));
       pollBoard();
-    }, 1000)).catch(() => toast(t("submit_error"), true));
+    }).catch(() => { typing.remove(); toast(t("submit_error"), true); });
   });
 }
 
@@ -594,12 +680,12 @@ function peopleSection() {
 }
 
 function policySection() {
-  const v = settingsCache ? settingsCache.auto_approve_limit_usd : "";
+  const v = settingsCache ? settingsCache.clp_per_usd ?? "" : "";
   return `<p class="admin-help">${esc(t("policy_help"))}</p>
     <form class="admin-form settings-form" id="settings-form">
       <div class="field">
         <label for="sf-limit">${esc(t("limit_label"))}</label>
-        <input id="sf-limit" type="number" inputmode="numeric" min="0" step="1000" value="${esc(v)}">
+        <input id="sf-limit" type="number" inputmode="decimal" min="0.01" step="0.01" required value="${esc(v)}">
       </div>
       <div class="form-actions">
         <button type="submit" class="btn btn-approve btn-small">${esc(t("save"))}</button>
@@ -702,7 +788,7 @@ async function saveSettings(ev) {
   ev.preventDefault();
   const val = $("#sf-limit").value;
   try {
-    settingsCache = await api("/api/settings", { method: "PATCH", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ auto_approve_limit_usd: val }) });
+    settingsCache = await api("/api/settings", { method: "PATCH", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ clp_per_usd: val }) });
     const s = $("#settings-saved"); if (s) { s.hidden = false; setTimeout(() => { s.hidden = true; }, 2500); }
   } catch { toast(t("save_error"), true); }
 }

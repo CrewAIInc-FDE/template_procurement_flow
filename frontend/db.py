@@ -72,16 +72,43 @@ CREATE TABLE IF NOT EXISTS pending_reviews (
   received_at TEXT NOT NULL,
   resolved_at TEXT
 );
+CREATE TABLE IF NOT EXISTS purchase_orders (
+  id INTEGER PRIMARY KEY AUTOINCREMENT,
+  pr_number TEXT NOT NULL REFERENCES purchase_requests(pr_number),
+  po_number TEXT NOT NULL UNIQUE,
+  supplier_id TEXT NOT NULL,
+  supplier_name TEXT NOT NULL,
+  markdown TEXT NOT NULL,
+  total_usd REAL NOT NULL,
+  created_at TEXT NOT NULL,
+  updated_at TEXT NOT NULL,
+  UNIQUE(pr_number, supplier_id)
+);
+CREATE TABLE IF NOT EXISTS purchase_order_items (
+  id INTEGER PRIMARY KEY AUTOINCREMENT,
+  po_id INTEGER NOT NULL REFERENCES purchase_orders(id),
+  request_item_id INTEGER NOT NULL UNIQUE REFERENCES request_items(id),
+  quote_id TEXT NOT NULL,
+  supplier_id TEXT NOT NULL,
+  supplier_name TEXT NOT NULL,
+  unit_price REAL NOT NULL,
+  currency TEXT NOT NULL,
+  line_total REAL NOT NULL,
+  line_total_usd REAL NOT NULL,
+  delivery_days INTEGER NOT NULL,
+  risk_notes_json TEXT NOT NULL DEFAULT '[]',
+  created_at TEXT NOT NULL,
+  updated_at TEXT NOT NULL
+);
 CREATE TABLE IF NOT EXISTS settings (
   key TEXT PRIMARY KEY,
   value TEXT
 );
 """
 
-# Org-wide auto-approval threshold. Seeded from the deployment env (same default
-# the AMP flow uses) so the UI starts consistent; thereafter the frontend sends
-# it on every triage kickoff, overriding the deployment env.
-DEFAULT_AUTO_APPROVE_LIMIT_USD = os.environ.get("AUTO_APPROVE_LIMIT_USD", "150000")
+# Required comparison FX. An empty value deliberately blocks quote review until
+# an analyst configures it in the portal (or CLP_PER_USD is set at deploy time).
+DEFAULT_CLP_PER_USD = os.environ.get("CLP_PER_USD", "")
 
 
 def now():
@@ -131,8 +158,8 @@ def init_db():
                     (s["id"], s.get("name"), json.dumps(s)),
                 )
         conn.execute(
-            "INSERT OR IGNORE INTO settings (key, value) VALUES ('auto_approve_limit_usd', ?)",
-            (DEFAULT_AUTO_APPROVE_LIMIT_USD,),
+            "INSERT OR IGNORE INTO settings (key, value) VALUES ('clp_per_usd', ?)",
+            (DEFAULT_CLP_PER_USD,),
         )
 
 

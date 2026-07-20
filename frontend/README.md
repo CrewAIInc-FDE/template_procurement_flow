@@ -1,66 +1,61 @@
-# Procurement Demo Portal (frontend)
+# Procurement Portal
 
-Flask portal for the ProcurementFlow AMP demo: chat widget → kanban board → live HITL
-approval. Contract in `../docs/frontend-plan.md` + `../docs/amp-contract.md`.
+Flask portal for the two-process ProcurementFlow AMP demo.
+
+## Lifecycle
+
+1. Chat creates a placeholder PR and immediately returns its `PR-####` number.
+2. Intake structures the request and stops at `awaiting_quotes`.
+3. An analyst clicks **Review quotes**; `POST /api/requests/<pr>/review-quotes` starts one idempotent `mode=quote_review` kickoff.
+4. The card moves through `reviewing_quotes` → `awaiting_review`.
+5. The drawer shows an editable per-item proposal. Approval forwards structured award JSON to the AMP HITL callback.
+6. The final envelope persists awards and one stable PO per supplier. Partial coverage returns the PR to `awaiting_quotes`; complete coverage moves it to `approved`.
+
+Board columns:
+
+- Awaiting Quotes: `submitted`, `awaiting_quotes`
+- Quote Review: `reviewing_quotes`, `awaiting_review`
+- Complete: `approved`, `rejected`
 
 ## Run locally
 
 ```bash
-# from the repo root
+cp frontend/.env.example frontend/.env
 uv run --with flask --with gunicorn --with requests --with markdown --with python-dotenv \
-  python frontend/app.py            # http://localhost:5001
+  python frontend/app.py
 ```
 
-Two backends, picked by env:
+With `DEPLOYMENT_URL` configured, the app uses AMP kickoff/status/webhook transport. Without it, it imports `ProcurementFlow` from `../src`; Gmail still needs `CREWAI_PLATFORM_INTEGRATION_TOKEN`, and local HITL waits for terminal input.
 
-- **`DEPLOYMENT_URL` set** (in `frontend/.env`, with `DEPLOYMENT_KEY` + `WEBHOOK_TOKEN`):
-  kickoffs go to the AMP deployment. Results arrive via webhook (needs `PUBLIC_BASE_URL`
-  reachable from AMP) *and* a status-polling watchdog — locally, polling alone is enough.
-- **`DEPLOYMENT_URL` unset**: ProcurementFlow runs in-process from `../src`
-  (needs `OPENAI_API_KEY`, read from `../.env`). **Caveat:** escalated requests block on a
-  console `approved`/`rejected` prompt in the server terminal — there is no HITL webhook
-  locally, so the board's Approve/Reject buttons and the `awaiting review` badge only work
-  against a real AMP deployment.
+The Manage → Policy setting `clp_per_usd` is required and must be positive before quote review can start. Scoring weights are fixed at 50% price and 50% delivery.
 
-## Manage panel (gear icon, top-right)
+## API
 
-- **People** — add/edit/delete personas and their `approval_limit_usd`. The employee object
-  (incl. the limit) rides on every kickoff, so edits affect the AI's screening immediately.
-- **Policy** — the auto-approve threshold. Stored in the `settings` table and **sent on every
-  triage kickoff as `auto_approve_limit_usd`**, overriding the deployment's `AUTO_APPROVE_LIMIT_USD`
-  env. Requests whose sourced total exceeds it (or that screening flags) escalate to human review.
-- **Products / Suppliers** — read-only viewers. Reference data stays backend-controlled (bundled
-  with the deployment; MongoDB-backed later), so the frontend never sends catalog/suppliers as
-  kickoff inputs.
+- `POST /api/requests` — create PR and start intake
+- `POST /api/requests/<pr>/review-quotes` — explicit/idempotent quote-review kickoff
+- `GET /api/requests` / `GET /api/requests/<pr>` — board/detail, including outstanding items, quote review, warnings, and `purchase_orders[]`
+- `POST /api/requests/<pr>/approve` — `{awards:[{request_item_id, quote_id}]}`
+- `POST /api/requests/<pr>/reject` — reject the whole PR
+- `POST /api/webhook/<pr>` — Flow events
+- `POST /api/hitl-webhook` — structured proposal + callback URL from AMP
+- `GET|PATCH /api/settings` — `clp_per_usd`
 
-All of this is ephemeral SQLite — edits reset to seed on dyno restart/redeploy.
+SQLite is intentionally ephemeral on Heroku. The normalized `purchase_orders` and `purchase_order_items` tables enforce one PO per PR/supplier and one award per request item.
 
-## Fixtures (instant UI states, zero LLM calls)
+## Deploy
 
-```bash
-rm -f frontend/portal.db
-cd frontend && uv run --with flask --with requests --with markdown --with python-dotenv \
-  flask demo-fixtures
+Deploy only the `frontend/` subtree, then configure:
+
+```text
+DEPLOYMENT_URL
+DEPLOYMENT_KEY
+WEBHOOK_TOKEN
+PUBLIC_BASE_URL
+CLP_PER_USD
 ```
 
-Replays `../docs/examples/*.json` through the real envelope pipeline: PR-1001
-approved+PO, PR-1002 awaiting review (alerts + memo + no-op Approve/Reject),
-PR-1003 rejected. Dev-only — `docs/` is gitignored and absent from deploys.
+Set the AMP HITL webhook to:
 
-## Deploy (Heroku)
-
-Repo root has its own `uv.lock` (the AMP deployment), so Heroku must only ever see
-`frontend/` — deploy the subtree, never the repo root:
-
-```bash
-heroku create <app>
-heroku config:set DEPLOYMENT_URL=... DEPLOYMENT_KEY=... WEBHOOK_TOKEN=... \
-                  PUBLIC_BASE_URL=https://<app>.herokuapp.com
-git push heroku "$(git subtree split --prefix frontend <branch>)":main --force
+```text
+https://<portal>/api/hitl-webhook?token=<WEBHOOK_TOKEN>
 ```
-
-Then, once per deployment, in AMP's HITL settings: webhook URL
-`https://<app>.herokuapp.com/api/hitl-webhook?token=<WEBHOOK_TOKEN>` + reviewer email.
-
-SQLite lives on the dyno's ephemeral filesystem: it reseeds from `seed_data/` on every
-restart and requests vanish — fine between demo runs (upgrade path: Heroku Postgres).
