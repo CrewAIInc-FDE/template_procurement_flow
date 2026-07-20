@@ -11,9 +11,9 @@ const I18N = {
     board_label: "LIVE PIPELINE",
     title: 'Purchase requests, <em>live</em>',
     subtitle: "Open a request in chat, collect supplier quotes by email, then review and adjust the proposed awards before purchase orders are generated.",
-    col_awaiting: "Awaiting Quotes", col_review: "Quote Review", col_complete: "Complete",
-    empty_awaiting: "NO REQUESTS AWAITING QUOTES", empty_review: "NOTHING TO REVIEW", empty_complete: "NOTHING COMPLETED YET",
-    st_submitted: "Structuring", st_awaiting_quotes: "Awaiting quotes", st_reviewing_quotes: "Reviewing quotes", st_awaiting_review: "Awaiting review",
+    col_processing: "Processing", col_awaiting: "Awaiting Quotes", col_review: "Quote Review", col_complete: "Complete",
+    empty_processing: "NO REQUESTS BEING PROCESSED", empty_awaiting: "NO REQUESTS AWAITING QUOTES", empty_review: "NOTHING TO REVIEW", empty_complete: "NOTHING COMPLETED YET",
+    st_submitted: "Processing", st_awaiting_quotes: "Awaiting quotes", st_reviewing_quotes: "Reviewing quotes", st_awaiting_review: "Awaiting review",
     st_approved: "Approved", st_rejected: "Rejected",
     phase_screening: "Screening", phase_gmail: "Scanning Gmail", phase_approval: "Applying decision",
     alerts_n: "alerts", alert_1: "alert", sev_high: "High", sev_medium: "Medium",
@@ -22,7 +22,7 @@ const I18N = {
     sec_items: "Line items", sec_screening: "Screening", sec_quotes: "Quote proposal",
     sec_alerts: "Alerts", sec_documents: "Purchase orders", sec_review: "Human review", sec_warnings: "Quote warnings",
     th_item: "Item", th_qty: "Qty", th_unit: "Unit", th_total: "Total",
-    estimated_total: "Estimated total", intake_wait: "STRUCTURING REQUEST…",
+    estimated_total: "Estimated total", intake_wait: "PROCESSING REQUEST…",
     unmatched: "Not matched to the catalog:",
     verdict_pass: "Pass", verdict_flag: "Flagged", verdict_reject: "Reject",
     confidence: "confidence", runner_up: "Runner-up", risks: "Risks",
@@ -34,7 +34,7 @@ const I18N = {
     confirm_reject: "Reject this purchase request?",
     chat_title: "Procurement assistant", chat_status: "online",
     chat_intro: "Hi, I'm your procurement assistant — describe what you need and why.",
-    chat_ack: "{pr} opened and awaiting quotes.",
+    chat_ack: "{pr} opened and is being processed.",
     chat_placeholder: "Describe what you need…",
     chat_onboard: "Open request",
     submit_error: "Could not submit the request — is the server up?",
@@ -60,9 +60,9 @@ const I18N = {
     board_label: "PIPELINE EN VIVO",
     title: 'Solicitudes de compra, <em>en vivo</em>',
     subtitle: "Abre una solicitud en el chat, recibe cotizaciones por correo y luego revisa y ajusta la propuesta antes de generar las órdenes de compra.",
-    col_awaiting: "Esperando cotizaciones", col_review: "Revisión de cotizaciones", col_complete: "Completas",
-    empty_awaiting: "SIN SOLICITUDES ESPERANDO COTIZACIÓN", empty_review: "NADA PARA REVISAR", empty_complete: "NADA COMPLETADO AÚN",
-    st_submitted: "Estructurando", st_awaiting_quotes: "Esperando cotizaciones", st_reviewing_quotes: "Revisando cotizaciones", st_awaiting_review: "Esperando revisión",
+    col_processing: "Procesando", col_awaiting: "Esperando cotizaciones", col_review: "Revisión de cotizaciones", col_complete: "Completas",
+    empty_processing: "SIN SOLICITUDES EN PROCESO", empty_awaiting: "SIN SOLICITUDES ESPERANDO COTIZACIÓN", empty_review: "NADA PARA REVISAR", empty_complete: "NADA COMPLETADO AÚN",
+    st_submitted: "Procesando", st_awaiting_quotes: "Esperando cotizaciones", st_reviewing_quotes: "Revisando cotizaciones", st_awaiting_review: "Esperando revisión",
     st_approved: "Aprobada", st_rejected: "Rechazada",
     phase_screening: "Evaluando", phase_gmail: "Revisando Gmail", phase_approval: "Aplicando decisión",
     alerts_n: "alertas", alert_1: "alerta", sev_high: "Alta", sev_medium: "Media",
@@ -71,7 +71,7 @@ const I18N = {
     sec_items: "Ítems", sec_screening: "Evaluación", sec_quotes: "Propuesta de compra",
     sec_alerts: "Alertas", sec_documents: "Órdenes de compra", sec_review: "Revisión humana", sec_warnings: "Alertas de cotización",
     th_item: "Ítem", th_qty: "Cant.", th_unit: "Unitario", th_total: "Total",
-    estimated_total: "Total estimado", intake_wait: "ESTRUCTURANDO SOLICITUD…",
+    estimated_total: "Total estimado", intake_wait: "PROCESANDO SOLICITUD…",
     unmatched: "Sin match en el catálogo:",
     verdict_pass: "Aprobada", verdict_flag: "Con alertas", verdict_reject: "Rechazada",
     confidence: "confianza", runner_up: "Alternativa", risks: "Riesgos",
@@ -83,7 +83,7 @@ const I18N = {
     confirm_reject: "¿Rechazar esta solicitud de compra?",
     chat_title: "Asistente de compras", chat_status: "en línea",
     chat_intro: "¡Hola! Soy tu asistente de compras — cuéntame qué necesitas y para qué.",
-    chat_ack: "{pr} fue abierta y está esperando cotizaciones.",
+    chat_ack: "{pr} fue abierta y está siendo procesada.",
     chat_placeholder: "Describe lo que necesitas…",
     chat_onboard: "Abrir solicitud",
     submit_error: "No se pudo enviar la solicitud — ¿está activo el servidor?",
@@ -109,9 +109,9 @@ const I18N = {
     board_label: "PIPELINE AO VIVO",
     title: 'Pedidos de compra, <em>ao vivo</em>',
     subtitle: "Abra um pedido no chat, receba cotações por e-mail e depois revise e ajuste a proposta antes de gerar as ordens de compra.",
-    col_awaiting: "Aguardando cotações", col_review: "Revisão de cotações", col_complete: "Concluídos",
-    empty_awaiting: "SEM PEDIDOS AGUARDANDO COTAÇÃO", empty_review: "NADA PARA REVISAR", empty_complete: "NADA CONCLUÍDO AINDA",
-    st_submitted: "Estruturando", st_awaiting_quotes: "Aguardando cotações", st_reviewing_quotes: "Revisando cotações", st_awaiting_review: "Aguardando revisão",
+    col_processing: "Processando", col_awaiting: "Aguardando cotações", col_review: "Revisão de cotações", col_complete: "Concluídos",
+    empty_processing: "NENHUM PEDIDO EM PROCESSAMENTO", empty_awaiting: "SEM PEDIDOS AGUARDANDO COTAÇÃO", empty_review: "NADA PARA REVISAR", empty_complete: "NADA CONCLUÍDO AINDA",
+    st_submitted: "Processando", st_awaiting_quotes: "Aguardando cotações", st_reviewing_quotes: "Revisando cotações", st_awaiting_review: "Aguardando revisão",
     st_approved: "Aprovado", st_rejected: "Rejeitado",
     phase_screening: "Avaliando", phase_gmail: "Lendo Gmail", phase_approval: "Aplicando decisão",
     alerts_n: "alertas", alert_1: "alerta", sev_high: "Alta", sev_medium: "Média",
@@ -120,7 +120,7 @@ const I18N = {
     sec_items: "Itens", sec_screening: "Avaliação", sec_quotes: "Proposta de compra",
     sec_alerts: "Alertas", sec_documents: "Ordens de compra", sec_review: "Revisão humana", sec_warnings: "Alertas de cotação",
     th_item: "Item", th_qty: "Qtd.", th_unit: "Unitário", th_total: "Total",
-    estimated_total: "Total estimado", intake_wait: "ESTRUTURANDO PEDIDO…",
+    estimated_total: "Total estimado", intake_wait: "PROCESSANDO PEDIDO…",
     unmatched: "Sem correspondência no catálogo:",
     verdict_pass: "Aprovado", verdict_flag: "Com alertas", verdict_reject: "Rejeitado",
     confidence: "confiança", runner_up: "Alternativa", risks: "Riscos",
@@ -132,7 +132,7 @@ const I18N = {
     confirm_reject: "Rejeitar este pedido de compra?",
     chat_title: "Assistente de compras", chat_status: "online",
     chat_intro: "Olá! Sou seu assistente de compras — descreva o que você precisa e por quê.",
-    chat_ack: "{pr} foi aberto e está aguardando cotações.",
+    chat_ack: "{pr} foi aberto e está sendo processado.",
     chat_placeholder: "Descreva o que você precisa…",
     chat_onboard: "Abrir pedido",
     submit_error: "Não foi possível enviar o pedido — o servidor está no ar?",
@@ -261,7 +261,7 @@ function setupPersona() {
 /* ---------------------------------------------------------------- board */
 
 const COLS = {
-  submitted: "awaiting", awaiting_quotes: "awaiting",
+  submitted: "processing", awaiting_quotes: "awaiting",
   reviewing_quotes: "review", awaiting_review: "review",
   approved: "complete", rejected: "complete",
 };
@@ -303,9 +303,9 @@ function cardHtml(r) {
 }
 
 function renderBoard() {
-  const byCol = { awaiting: [], review: [], complete: [] };
+  const byCol = { processing: [], awaiting: [], review: [], complete: [] };
   for (const r of board) (byCol[COLS[r.status]] || byCol.awaiting).push(r);
-  for (const col of ["awaiting", "review", "complete"]) {
+  for (const col of ["processing", "awaiting", "review", "complete"]) {
     const rows = byCol[col];
     $(`#count-${col}`).textContent = rows.length;
     $(`#col-${col}`).innerHTML = rows.length

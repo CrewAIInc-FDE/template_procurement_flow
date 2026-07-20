@@ -13,7 +13,8 @@ Flask portal for the two-process ProcurementFlow AMP demo.
 
 Board columns:
 
-- Awaiting Quotes: `submitted`, `awaiting_quotes`
+- Processing: `submitted`
+- Awaiting Quotes: `awaiting_quotes`
 - Quote Review: `reviewing_quotes`, `awaiting_review`
 - Complete: `approved`, `rejected`
 
