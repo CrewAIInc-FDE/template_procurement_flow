@@ -1,0 +1,93 @@
+[
+  {
+    "id": "S-001",
+    "name": "FlowServ Industrial Ltd.",
+    "categories": ["industrial", "services_software"],
+    "location": "Houston, USA (LATAM office: Santiago)",
+    "years_as_vendor": 6,
+    "on_time_delivery_rate": 0.96,
+    "quality_incidents_last_24m": 0,
+    "open_disputes": 0,
+    "financial_health": "strong",
+    "certifications": ["ISO 9001:2015", "ISO 14001"],
+    "notes": "Long-standing vendor for rotating equipment. Consistent performer, also provides maintenance contracts."
+  },
+  {
+    "id": "S-002",
+    "name": "AndesFlow SpA",
+    "categories": ["industrial", "ppe_safety"],
+    "location": "Antofagasta, Chile",
+    "years_as_vendor": 2,
+    "on_time_delivery_rate": 0.88,
+    "quality_incidents_last_24m": 1,
+    "open_disputes": 0,
+    "financial_health": "adequate",
+    "certifications": ["ISO 9001 (certification in progress, audit Q4 2026)"],
+    "notes": "Local supplier with Antofagasta warehouse — fast response for spares. One late delivery on a spare parts order in 2025."
+  },
+  {
+    "id": "S-003",
+    "name": "HydroTech Global GmbH",
+    "categories": ["industrial"],
+    "location": "Frankfurt, Germany",
+    "years_as_vendor": 4,
+    "on_time_delivery_rate": 0.94,
+    "quality_incidents_last_24m": 0,
+    "open_disputes": 0,
+    "financial_health": "strong",
+    "certifications": ["ISO 9001", "ISO 45001", "API 610"],
+    "notes": "Premium supplier. Higher price point, excellent service record, IoT-enabled equipment with predictive maintenance tooling."
+  },
+  {
+    "id": "S-004",
+    "name": "PumpMax Trading Co.",
+    "categories": ["industrial", "it_office"],
+    "location": "Shenzhen, China",
+    "years_as_vendor": 1,
+    "on_time_delivery_rate": 0.71,
+    "quality_incidents_last_24m": 2,
+    "open_disputes": 1,
+    "financial_health": "unknown",
+    "certifications": [],
+    "notes": "Trading company, not a manufacturer. Two quality incidents on gasket order (2025). Open dispute over a delayed shipment. Requires 100% advance payment."
+  },
+  {
+    "id": "S-005",
+    "name": "TecnoAndes Ltda.",
+    "categories": ["it_office", "services_software"],
+    "location": "Santiago, Chile",
+    "years_as_vendor": 5,
+    "on_time_delivery_rate": 0.93,
+    "quality_incidents_last_24m": 0,
+    "open_disputes": 0,
+    "financial_health": "strong",
+    "certifications": ["ISO 9001:2015", "ISO 27001"],
+    "notes": "Local IT distributor and integrator. Handles laptop fleet provisioning, imaging and warranty service in-country."
+  },
+  {
+    "id": "S-006",
+    "name": "OfficePro Chile SpA",
+    "categories": ["it_office"],
+    "location": "Santiago, Chile",
+    "years_as_vendor": 3,
+    "on_time_delivery_rate": 0.91,
+    "quality_incidents_last_24m": 1,
+    "open_disputes": 0,
+    "financial_health": "adequate",
+    "certifications": ["ISO 9001:2015"],
+    "notes": "Office equipment and furniture. Competitive pricing, occasional stock-outs on monitors."
+  },
+  {
+    "id": "S-007",
+    "name": "SafetyFirst Andina S.A.",
+    "categories": ["ppe_safety", "services_software"],
+    "location": "Valparaíso, Chile",
+    "years_as_vendor": 5,
+    "on_time_delivery_rate": 0.95,
+    "quality_incidents_last_24m": 0,
+    "open_disputes": 0,
+    "financial_health": "strong",
+    "certifications": ["ISO 9001:2015", "ISO 45001"],
+    "notes": "PPE specialist, all products certified to ANSI/EN standards. Also delivers accredited safety training."
+  }
+]
