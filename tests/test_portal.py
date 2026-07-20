@@ -75,6 +75,11 @@ class PortalWorkflowTests(unittest.TestCase):
             "item_ids": item_ids, "items": items, "markdown": f"# {po_number}",
         }
 
+    def test_markdown_fences_are_stripped_without_regex(self):
+        self.assertEqual(portal.strip_md_fence("```markdown\n# PO\n```"), "# PO")
+        other = "```python\nprint('keep the fence')\n```"
+        self.assertEqual(portal.strip_md_fence(other), other)
+
     def test_intake_stops_at_awaiting_quotes(self):
         pr = portal.allocate_pr("E-001", "Need one laptop")
         self._kickoff(pr, "intake-1", "intake")
@@ -111,6 +116,27 @@ class PortalWorkflowTests(unittest.TestCase):
         self.assertFalse(first.get_json()["already_running"])
         self.assertTrue(second.get_json()["already_running"])
         self.assertEqual(start.call_count, 1)
+
+    def test_review_endpoint_hides_internal_exception(self):
+        pr = self._request(1)
+        with patch.object(portal.amp, "start_kickoff", side_effect=RuntimeError("secret-token")):
+            response = self.client.post(f"/api/requests/{pr}/review-quotes")
+        self.assertEqual(response.status_code, 502)
+        self.assertEqual(response.get_json(), {"error": "could not start quote review"})
+
+    def test_decision_endpoint_hides_internal_exception(self):
+        pr = self._request(1)
+        with portal.db() as conn:
+            conn.execute(
+                "INSERT INTO pending_reviews (pr_number, callback_url, memo, received_at)"
+                " VALUES (?,?,?,?)", (pr, "https://example.invalid", "{}", portal.now()),
+            )
+        with patch.object(
+            portal.http, "post", side_effect=portal.http.RequestException("secret-token")
+        ):
+            response = self.client.post(f"/api/requests/{pr}/reject")
+        self.assertEqual(response.status_code, 502)
+        self.assertEqual(response.get_json(), {"error": "could not deliver decision"})
 
     def test_no_quotes_returns_to_awaiting_with_warning(self):
         pr = self._request(1)
@@ -166,6 +192,12 @@ class PortalWorkflowTests(unittest.TestCase):
             conn.execute(
                 "UPDATE purchase_requests SET status='awaiting_review' WHERE pr_number=?", (pr,)
             )
+        invalid = self.client.post(
+            f"/api/requests/{pr}/approve",
+            json={"awards": [{"request_item_id": item_id, "quote_id": "secret-token"}]},
+        )
+        self.assertEqual(invalid.status_code, 400)
+        self.assertEqual(invalid.get_json(), {"error": "invalid award selection"})
         response = self.client.post(
             f"/api/requests/{pr}/approve",
             json={"awards": [{"request_item_id": item_id, "quote_id": "Q-2"}]},

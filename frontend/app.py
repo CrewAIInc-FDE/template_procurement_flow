@@ -6,7 +6,6 @@ See docs/frontend-plan.md and docs/amp-contract.md (repo root) for the contract.
 
 import json
 import logging
-import re
 import threading
 from datetime import datetime, timedelta, timezone
 from pathlib import Path
@@ -48,8 +47,14 @@ def strip_md_fence(text):
     """The backend usually strips ```markdown fences from documents, but real
     envelopes have arrived with them intact — strip defensively before storing."""
     text = (text or "").strip()
-    m = re.match(r"^```(?:markdown|md)?\s*\n(.*)\n?```$", text, re.DOTALL)
-    return m.group(1).strip() if m else text
+    opening, separator, body = text.partition("\n")
+    if (
+        separator
+        and opening.strip() in {"```", "```markdown", "```md"}
+        and body.endswith("```")
+    ):
+        return body[:-3].strip()
+    return text
 
 
 def render_md(text):
@@ -388,11 +393,11 @@ def review_quotes(pr_number):
         kickoff_id = amp.start_kickoff(
             pr_number, "quote_review", build_quote_review_inputs(pr_number)
         )
-    except Exception as exc:
+    except Exception:
         log.exception("quote review kickoff failed for %s", pr_number)
         with db() as conn:
             set_status(conn, pr_number, "awaiting_quotes")
-        return jsonify({"error": f"could not start quote review: {exc}"}), 502
+        return jsonify({"error": "could not start quote review"}), 502
     return jsonify({"kickoff_id": kickoff_id, "already_running": False}), 202
 
 
@@ -437,8 +442,9 @@ def _decide(pr_number, feedback):
             resp = http.post(review["callback_url"],
                              json={"feedback": feedback, "source": "procurement-portal"}, timeout=30)
             resp.raise_for_status()
-        except http.RequestException as exc:
-            return jsonify({"error": f"could not deliver decision: {exc}"}), 502
+        except http.RequestException:
+            log.exception("decision delivery failed for %s", pr_number)
+            return jsonify({"error": "could not deliver decision"}), 502
     with db() as conn:
         conn.execute("UPDATE pending_reviews SET resolved_at=? WHERE pr_number=?", (now(), pr_number))
         conn.execute(
@@ -461,8 +467,8 @@ def approve(pr_number):
         try:
             proposal = json.loads(strip_md_fence(review["memo"]))
             awards = _validate_portal_awards(conn, pr_number, proposal, data.get("awards"))
-        except (TypeError, ValueError) as exc:
-            return jsonify({"error": str(exc)}), 400
+        except (TypeError, ValueError):
+            return jsonify({"error": "invalid award selection"}), 400
     feedback = json.dumps({"decision": "approved", "awards": awards}, separators=(",", ":"))
     return _decide(pr_number, feedback)
 
@@ -715,4 +721,4 @@ init_db()
 amp.start_watchdog()
 
 if __name__ == "__main__":
-    app.run(debug=True, port=5001)
+    app.run(port=5001)
