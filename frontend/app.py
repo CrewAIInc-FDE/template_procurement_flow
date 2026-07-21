@@ -68,6 +68,65 @@ def set_status(conn, pr_number, status, phase=None):
     )
 
 
+def recent_requests(conn, employee_id, pr_number):
+    cutoff = (datetime.now(timezone.utc) - timedelta(days=14)).isoformat()
+    recent = []
+    for row in conn.execute(
+        "SELECT pr_number, estimated_total_usd, created_at FROM purchase_requests"
+        " WHERE employee_id=? AND pr_number!=? AND created_at>=?",
+        (employee_id, pr_number, cutoff),
+    ).fetchall():
+        categories = [category[0] for category in conn.execute(
+            "SELECT DISTINCT ci.category FROM request_items ri"
+            " JOIN catalog_items ci ON ci.id=ri.catalog_item_id WHERE ri.pr_number=?",
+            (row["pr_number"],),
+        ).fetchall() if category[0]]
+        recent.append({
+            "pr_number": row["pr_number"],
+            "estimated_total_usd": row["estimated_total_usd"],
+            "category_summary": ", ".join(categories) or "general",
+            "created_at": (row["created_at"] or "")[:10],
+        })
+    return recent
+
+
+def rfq_dispatches(conn, pr_number):
+    return [dict(row) for row in conn.execute(
+        "SELECT rfq_id, supplier_id, supplier_name, intended_recipient, actual_recipient,"
+        " override_applied, gmail_message_id, gmail_thread_id, status, error, sent_at,"
+        " reply_count, last_reply_at FROM rfq_dispatches WHERE pr_number=? ORDER BY supplier_name",
+        (pr_number,),
+    ).fetchall()]
+
+
+def upsert_rfq_dispatches(conn, pr_number, dispatches):
+    for dispatch in dispatches or []:
+        conn.execute(
+            "INSERT INTO rfq_dispatches"
+            " (rfq_id, pr_number, supplier_id, supplier_name, intended_recipient,"
+            " actual_recipient, override_applied, gmail_message_id, gmail_thread_id,"
+            " status, error, sent_at, reply_count, last_reply_at)"
+            " VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?,?)"
+            " ON CONFLICT(rfq_id) DO UPDATE SET"
+            " intended_recipient=excluded.intended_recipient,"
+            " actual_recipient=excluded.actual_recipient,"
+            " override_applied=excluded.override_applied,"
+            " gmail_message_id=excluded.gmail_message_id,"
+            " gmail_thread_id=excluded.gmail_thread_id, status=excluded.status,"
+            " error=excluded.error, sent_at=excluded.sent_at,"
+            " reply_count=excluded.reply_count, last_reply_at=excluded.last_reply_at",
+            (
+                dispatch["rfq_id"], pr_number, dispatch["supplier_id"],
+                dispatch["supplier_name"], dispatch.get("intended_recipient", ""),
+                dispatch.get("actual_recipient", ""), int(dispatch.get("override_applied", False)),
+                dispatch.get("gmail_message_id", ""), dispatch.get("gmail_thread_id", ""),
+                dispatch.get("status", "failed"), dispatch.get("error", ""),
+                dispatch.get("sent_at", ""), int(dispatch.get("reply_count", 0)),
+                dispatch.get("last_reply_at", ""),
+            ),
+        )
+
+
 def build_quote_review_inputs(pr_number):
     with db() as conn:
         pr = conn.execute(
@@ -97,23 +156,8 @@ def build_quote_review_inputs(pr_number):
         existing_purchase_orders = [dict(r) for r in conn.execute(
             "SELECT po_number, supplier_id, supplier_name FROM purchase_orders"
             " WHERE pr_number=? ORDER BY po_number", (pr_number,)).fetchall()]
-        cutoff = (datetime.now(timezone.utc) - timedelta(days=14)).isoformat()
-        recent = []
-        for r in conn.execute(
-            "SELECT pr_number, estimated_total_usd, created_at FROM purchase_requests"
-            " WHERE employee_id=? AND pr_number!=? AND created_at>=?",
-            (pr["employee_id"], pr_number, cutoff),
-        ).fetchall():
-            cats = [c[0] for c in conn.execute(
-                "SELECT DISTINCT ci.category FROM request_items ri"
-                " JOIN catalog_items ci ON ci.id=ri.catalog_item_id WHERE ri.pr_number=?",
-                (r["pr_number"],)).fetchall() if c[0]]
-            recent.append({
-                "pr_number": r["pr_number"],
-                "estimated_total_usd": r["estimated_total_usd"],
-                "category_summary": ", ".join(cats) or "general",
-                "created_at": (r["created_at"] or "")[:10],
-            })
+        recent = recent_requests(conn, pr["employee_id"], pr_number)
+        dispatches = rfq_dispatches(conn, pr_number)
     clp_per_usd = float(get_setting("clp_per_usd"))
     return {
         "mode": "quote_review",
@@ -132,6 +176,7 @@ def build_quote_review_inputs(pr_number):
         "clp_per_usd": clp_per_usd,
         "existing_awards": existing_awards,
         "existing_purchase_orders": existing_purchase_orders,
+        "rfq_dispatches": dispatches,
     }
 
 
@@ -149,7 +194,7 @@ def process_envelope(pr_number, kickoff_id, envelope):
 
     mode = row["mode"]
     final_status = envelope.get("final_status") or ""
-    is_terminal = (mode == "intake" and final_status == "awaiting_quotes") or (
+    is_terminal = (mode == "intake" and final_status in ("awaiting_quotes", "rfq_failed", "rejected")) or (
         mode == "quote_review"
         and final_status in ("approved", "rejected", "awaiting_quotes")
     )
@@ -157,6 +202,7 @@ def process_envelope(pr_number, kickoff_id, envelope):
     if not is_terminal:
         if mode == "quote_review" and final_status == "needs_review":
             with db() as conn:
+                upsert_rfq_dispatches(conn, pr_number, envelope.get("rfq_dispatches"))
                 for kind in ("alerts", "screening", "quote_review", "warnings"):
                     if envelope.get(kind):
                         upsert_artifact(conn, pr_number, kind, json.dumps(envelope[kind]))
@@ -180,11 +226,11 @@ def process_envelope(pr_number, kickoff_id, envelope):
         with db() as conn:
             conn.execute(
                 "UPDATE purchase_requests SET justification=?, urgency=?, detected_language=?,"
-                " estimated_total_usd=?, unmatched_json=?, status='awaiting_quotes', updated_at=?"
+                " estimated_total_usd=?, unmatched_json=?, status=?, phase=NULL, updated_at=?"
                 " WHERE pr_number=?",
                 (draft.get("justification"), draft.get("urgency"),
                  draft.get("detected_language"), draft.get("estimated_total_usd"),
-                 json.dumps(draft.get("unmatched", [])), now(), pr_number),
+                 json.dumps(draft.get("unmatched", [])), final_status, now(), pr_number),
             )
             conn.execute("DELETE FROM request_items WHERE pr_number=?", (pr_number,))
             for li in draft.get("line_items", []):
@@ -194,9 +240,23 @@ def process_envelope(pr_number, kickoff_id, envelope):
                     (pr_number, li.get("catalog_item_id"), li.get("sku"), li.get("name"),
                      li.get("quantity"), li.get("unit_price_usd"), li.get("line_total_usd")),
                 )
-        log.info("%s intake done → awaiting quotes", pr_number)
+            upsert_rfq_dispatches(conn, pr_number, envelope.get("rfq_dispatches"))
+            for kind, key, is_md in (
+                ("screening", "screening", False),
+                ("alerts", "alerts", False),
+                ("warnings", "warnings", False),
+                ("rejection_note", "rejection_md", True),
+            ):
+                value = envelope.get(key)
+                if value:
+                    upsert_artifact(
+                        conn, pr_number, kind,
+                        strip_md_fence(value) if is_md else json.dumps(value),
+                    )
+        log.info("%s intake done → %s", pr_number, final_status)
     else:
         with db() as conn:
+            upsert_rfq_dispatches(conn, pr_number, envelope.get("rfq_dispatches"))
             for kind, key, is_md in (
                 ("screening", "screening", False),
                 ("quote_review", "quote_review", False),
@@ -257,10 +317,24 @@ def _submit_pipeline(pr_number, employee):
     try:
         amp.wakeup()
         with db() as conn:
-            raw = conn.execute("SELECT raw_message FROM purchase_requests WHERE pr_number=?",
-                               (pr_number,)).fetchone()["raw_message"]
-        amp.start_kickoff(pr_number, "intake",
-                          {"mode": "intake", "message": raw, "employee": employee})
+            row = conn.execute(
+                "SELECT raw_message, employee_id FROM purchase_requests WHERE pr_number=?",
+                (pr_number,),
+            ).fetchone()
+            raw = row["raw_message"]
+            recent = recent_requests(conn, row["employee_id"], pr_number)
+            set_status(conn, pr_number, "submitted", "extracting")
+        amp.start_kickoff(
+            pr_number,
+            "intake",
+            {
+                "mode": "intake",
+                "message": raw,
+                "employee": employee,
+                "request": {"pr_number": pr_number},
+                "recent_requests": recent,
+            },
+        )
     except Exception:
         log.exception("intake kickoff failed for %s", pr_number)
 
@@ -334,6 +408,7 @@ def request_detail(pr_number):
             " FROM purchase_orders WHERE pr_number=? ORDER BY po_number",
             (pr_number,),
         ).fetchall()]
+        d["rfq_dispatches"] = rfq_dispatches(conn, pr_number)
     for kind in ("screening", "quote_review", "alerts", "warnings"):
         d[kind] = json.loads(arts[kind]) if kind in arts else None
     d["rejection_note_html"] = render_md(arts.get("rejection_note"))
@@ -388,7 +463,7 @@ def review_quotes(pr_number):
         ).fetchone()[0]
         if not outstanding:
             return jsonify({"error": "no outstanding items"}), 409
-        set_status(conn, pr_number, "reviewing_quotes", "screening")
+        set_status(conn, pr_number, "reviewing_quotes", "gmail")
     try:
         kickoff_id = amp.start_kickoff(
             pr_number, "quote_review", build_quote_review_inputs(pr_number)
@@ -399,6 +474,29 @@ def review_quotes(pr_number):
             set_status(conn, pr_number, "awaiting_quotes")
         return jsonify({"error": "could not start quote review"}), 502
     return jsonify({"kickoff_id": kickoff_id, "already_running": False}), 202
+
+
+@app.post("/api/requests/<pr_number>/retry-rfqs")
+def retry_rfqs(pr_number):
+    with db() as conn:
+        conn.execute("BEGIN IMMEDIATE")
+        pr = conn.execute(
+            "SELECT employee_id, status FROM purchase_requests WHERE pr_number=?", (pr_number,)
+        ).fetchone()
+        if not pr:
+            return jsonify({"error": "not found"}), 404
+        if pr["status"] != "rfq_failed":
+            return jsonify({"error": "request does not have a failed RFQ dispatch"}), 409
+        pending = conn.execute(
+            "SELECT 1 FROM kickoffs WHERE pr_number=? AND mode='intake' AND state='pending'",
+            (pr_number,),
+        ).fetchone()
+        if pending:
+            return jsonify({"already_running": True}), 202
+        employee = get_employee(conn, pr["employee_id"])
+        set_status(conn, pr_number, "submitted", "extracting")
+    threading.Thread(target=_submit_pipeline, args=(pr_number, employee), daemon=True).start()
+    return jsonify({"already_running": False}), 202
 
 
 def _validate_portal_awards(conn, pr_number, proposal, awards):
@@ -515,7 +613,7 @@ def flow_webhook(pr_number):
                 with db() as conn:
                     conn.execute(
                         "UPDATE purchase_requests SET phase=?, updated_at=? WHERE pr_number=?"
-                        " AND status IN ('reviewing_quotes','awaiting_review')",
+                        " AND status IN ('submitted','reviewing_quotes','awaiting_review')",
                         (phase, now(), pr_number))
         elif name == "flow_finished" or not name:
             flow_name = _find_key(event, "flow_name") or ""

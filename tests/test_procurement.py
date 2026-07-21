@@ -3,15 +3,16 @@ import os
 import unittest
 from unittest.mock import patch
 
+from procurement_flow import main as flow_main
 from procurement_flow.main import ProcurementFlow
 from procurement_flow.procurement import (
     build_quote_review,
     generate_purchase_orders,
-    materialize_awards,
     parse_award_feedback,
     validate_awards,
 )
 from procurement_flow.tools.custom_tool import extract_pdf_text
+from procurement_flow.types import QuoteCollection, RequestDraft, RfqDispatch, ScreeningResult
 
 
 class QuoteScoringTests(unittest.TestCase):
@@ -185,6 +186,114 @@ class FlowContractTests(unittest.TestCase):
         flow.finish_no_quotes()
         self.assertEqual(flow.state.final_status, "awaiting_quotes")
         self.assertIn("Gmail is not configured", flow.state.warnings[0])
+
+    def test_rejected_intake_never_sends_supplier_email(self):
+        flow = ProcurementFlow()
+        flow.state.request = {"pr_number": "PR-1001"}
+        flow.state.catalog = [{
+            "id": "IT-001", "sku": "LAP", "name": "Laptop",
+            "unit_price_usd": 100, "category": "it_office",
+        }]
+        draft = RequestDraft(
+            line_items=[{
+                "catalog_item_id": "IT-001", "quantity": 1,
+                "unit_price_usd": 0, "line_total_usd": 0,
+            }],
+            justification="Personal gift", urgency="normal", unmatched=[],
+            estimated_total_usd=0, detected_language="en",
+        )
+
+        def reject():
+            flow.state.screening = ScreeningResult(
+                verdict="reject", violations=["Personal use"], anomalies=[], reasoning="Rejected",
+            )
+
+        llm = unittest.mock.Mock()
+        llm.call.return_value = draft
+        with patch.object(flow_main, "LLM", return_value=llm), \
+             patch.object(flow, "_run_screening", side_effect=reject), \
+             patch.object(flow, "_dispatch_rfq_emails") as send:
+            flow.run_intake()
+        send.assert_not_called()
+        self.assertEqual(flow.state.final_status, "rejected")
+
+    def test_demo_override_sends_to_one_address_and_reuses_sent_rfq(self):
+        flow = ProcurementFlow()
+        flow.state.request = {"pr_number": "PR-1001"}
+        flow.state.request_draft = RequestDraft(
+            line_items=[{
+                "catalog_item_id": "IT-001", "sku": "LAP", "name": "Laptop",
+                "quantity": 1, "unit_price_usd": 100, "line_total_usd": 100,
+            }],
+            justification="Work", urgency="normal", unmatched=[],
+            estimated_total_usd=100, detected_language="en",
+        )
+        flow.state.catalog = [{"id": "IT-001", "category": "it_office"}]
+        flow.state.suppliers = [{
+            "id": "S-001", "name": "Supplier", "email": "quotes@supplier.example",
+            "categories": ["it_office"],
+        }]
+        calls = []
+
+        def action(name, **kwargs):
+            calls.append((name, kwargs))
+            if name == "gmail/fetch_emails":
+                return {"messages": []}
+            return {"id": "sent-1", "threadId": "thread-1"}
+
+        with patch.dict(os.environ, {
+            "CREWAI_PLATFORM_INTEGRATION_TOKEN": "token",
+            "DEMO_RFQ_RECIPIENT_OVERRIDE": "personal@example.com",
+        }), patch.object(flow_main, "run_platform_action", side_effect=action):
+            flow._dispatch_rfq_emails()
+
+        self.assertEqual(flow.state.rfq_dispatches[0].actual_recipient, "personal@example.com")
+        self.assertTrue(flow.state.rfq_dispatches[0].override_applied)
+        self.assertEqual(calls[-1][0], "gmail/send_email")
+        self.assertEqual(calls[-1][1]["to"], "personal@example.com")
+
+        flow.state.rfq_dispatches = []
+        with patch.dict(os.environ, {
+            "CREWAI_PLATFORM_INTEGRATION_TOKEN": "token",
+            "DEMO_RFQ_RECIPIENT_OVERRIDE": "personal@example.com",
+        }), patch.object(
+            flow_main, "run_platform_action",
+            return_value={"messages": [{"id": "sent-1", "threadId": "thread-1"}]},
+        ) as existing:
+            flow._dispatch_rfq_emails()
+        self.assertEqual(existing.call_count, 1)
+        self.assertEqual(flow.state.rfq_dispatches[0].gmail_thread_id, "thread-1")
+
+    def test_only_recorded_inbound_thread_can_become_a_quote(self):
+        flow = ProcurementFlow()
+        dispatch = RfqDispatch(
+            rfq_id="RFQ-PR-1001-S-001", supplier_id="S-001", supplier_name="Supplier",
+            actual_recipient="personal@example.com", gmail_message_id="outbound",
+            gmail_thread_id="thread-1", status="sent",
+        )
+        flow.state.rfq_dispatches = [dispatch]
+        self.assertEqual(
+            flow_main.gmail_reply_query(dispatch),
+            'in:inbox -from:me from:personal@example.com "RFQ-PR-1001-S-001"',
+        )
+        collection = QuoteCollection.model_validate({
+            "replies": [
+                {"rfq_id": dispatch.rfq_id, "message_id": "outbound", "thread_id": "thread-1", "sender": "personal@example.com", "label_ids": ["SENT"], "received_at": "2026-07-21"},
+                {"rfq_id": dispatch.rfq_id, "message_id": "wrong", "thread_id": "thread-2", "sender": "personal@example.com", "label_ids": ["INBOX"], "received_at": "2026-07-21"},
+                {"rfq_id": dispatch.rfq_id, "message_id": "spoof", "thread_id": "thread-1", "sender": "other@example.com", "label_ids": ["INBOX"], "received_at": "2026-07-21"},
+                {"rfq_id": dispatch.rfq_id, "message_id": "reply-1", "thread_id": "thread-1", "sender": "Demo User <personal@example.com>", "label_ids": ["INBOX"], "received_at": "2026-07-21"},
+            ],
+            "quotes": [{
+                "rfq_id": dispatch.rfq_id, "thread_id": "thread-1", "quote_id": "Q-1",
+                "supplier_name": "From spoof", "request_item_id": 1, "unit_price": 100,
+                "currency": "USD", "delivery_days": 2, "received_at": "2026-07-21",
+                "message_id": "reply-1",
+            }],
+        })
+        sanitized = flow._sanitize_quote_collection(collection)
+        self.assertEqual([reply.message_id for reply in sanitized.replies], ["reply-1"])
+        self.assertEqual(sanitized.quotes[0].supplier_id, "S-001")
+        self.assertEqual(sanitized.quotes[0].supplier_name, "Supplier")
 
 
 if __name__ == "__main__":

@@ -23,7 +23,8 @@ class PortalWorkflowTests(unittest.TestCase):
         with portal.db() as conn:
             for table in (
                 "purchase_order_items", "purchase_orders", "pending_reviews",
-                "kickoffs", "request_artifacts", "request_items", "purchase_requests",
+                "kickoffs", "request_artifacts", "rfq_dispatches", "request_items",
+                "purchase_requests",
             ):
                 conn.execute(f"DELETE FROM {table}")
         portal.set_setting("clp_per_usd", 950)
@@ -91,6 +92,13 @@ class PortalWorkflowTests(unittest.TestCase):
                 "justification": "Need one laptop", "urgency": "normal", "unmatched": [],
                 "estimated_total_usd": 100, "detected_language": "en",
             },
+            "rfq_dispatches": [{
+                "rfq_id": f"RFQ-{pr}-S-001", "supplier_id": "S-001",
+                "supplier_name": "Supplier", "intended_recipient": "quotes@supplier.example",
+                "actual_recipient": "personal@example.com", "override_applied": True,
+                "gmail_message_id": "sent-1", "gmail_thread_id": "thread-1",
+                "status": "sent", "sent_at": "2026-07-21T10:00:00Z",
+            }],
         })
         with portal.db() as conn:
             status = conn.execute(
@@ -99,8 +107,14 @@ class PortalWorkflowTests(unittest.TestCase):
             modes = [row[0] for row in conn.execute(
                 "SELECT mode FROM kickoffs WHERE pr_number=?", (pr,)
             ).fetchall()]
+            dispatch = dict(conn.execute(
+                "SELECT * FROM rfq_dispatches WHERE pr_number=?", (pr,)
+            ).fetchone())
         self.assertEqual(status, "awaiting_quotes")
         self.assertEqual(modes, ["intake"])
+        self.assertEqual(dispatch["actual_recipient"], "personal@example.com")
+        inputs = portal.build_quote_review_inputs(pr)
+        self.assertEqual(inputs["rfq_dispatches"][0]["gmail_thread_id"], "thread-1")
 
     def test_review_endpoint_is_idempotent(self):
         pr = self._request(1)
@@ -123,6 +137,23 @@ class PortalWorkflowTests(unittest.TestCase):
             response = self.client.post(f"/api/requests/{pr}/review-quotes")
         self.assertEqual(response.status_code, 502)
         self.assertEqual(response.get_json(), {"error": "could not start quote review"})
+
+    def test_failed_rfq_can_be_retried_without_a_second_pr(self):
+        pr = portal.allocate_pr("E-001", "Need equipment")
+        with portal.db() as conn:
+            conn.execute(
+                "UPDATE purchase_requests SET status='rfq_failed' WHERE pr_number=?", (pr,)
+            )
+        with patch.object(portal.threading, "Thread") as thread:
+            response = self.client.post(f"/api/requests/{pr}/retry-rfqs")
+        self.assertEqual(response.status_code, 202)
+        self.assertFalse(response.get_json()["already_running"])
+        thread.return_value.start.assert_called_once()
+        with portal.db() as conn:
+            status = conn.execute(
+                "SELECT status FROM purchase_requests WHERE pr_number=?", (pr,)
+            ).fetchone()[0]
+        self.assertEqual(status, "submitted")
 
     def test_decision_endpoint_hides_internal_exception(self):
         pr = self._request(1)

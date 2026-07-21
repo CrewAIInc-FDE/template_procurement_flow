@@ -5,7 +5,7 @@ Flask portal for the two-process ProcurementFlow AMP demo.
 ## Lifecycle
 
 1. Chat creates a placeholder PR and immediately returns its `PR-####` number.
-2. Intake structures the request and stops at `awaiting_quotes`.
+2. Intake structures and screens the request, sends supplier RFQs through AMP Gmail, and stops at `awaiting_quotes`.
 3. An analyst clicks **Review quotes**; `POST /api/requests/<pr>/review-quotes` starts one idempotent `mode=quote_review` kickoff.
 4. The card moves through `reviewing_quotes` → `awaiting_review`.
 5. The drawer shows an editable per-item proposal. Approval forwards structured award JSON to the AMP HITL callback.
@@ -13,7 +13,7 @@ Flask portal for the two-process ProcurementFlow AMP demo.
 
 Board columns:
 
-- Processing: `submitted`
+- Processing: `submitted`, `rfq_failed`
 - Awaiting Quotes: `awaiting_quotes`
 - Quote Review: `reviewing_quotes`, `awaiting_review`
 - Complete: `approved`, `rejected`
@@ -34,14 +34,15 @@ The Manage → Policy setting `clp_per_usd` is required and must be positive bef
 
 - `POST /api/requests` — create PR and start intake
 - `POST /api/requests/<pr>/review-quotes` — explicit/idempotent quote-review kickoff
-- `GET /api/requests` / `GET /api/requests/<pr>` — board/detail, including outstanding items, quote review, warnings, and `purchase_orders[]`
+- `POST /api/requests/<pr>/retry-rfqs` — retry an intake whose supplier sends all failed
+- `GET /api/requests` / `GET /api/requests/<pr>` — board/detail, including RFQ/reply tracking, outstanding items, quote review, warnings, and `purchase_orders[]`
 - `POST /api/requests/<pr>/approve` — `{awards:[{request_item_id, quote_id}]}`
 - `POST /api/requests/<pr>/reject` — reject the whole PR
 - `POST /api/webhook/<pr>` — Flow events
 - `POST /api/hitl-webhook` — structured proposal + callback URL from AMP
 - `GET|PATCH /api/settings` — `clp_per_usd`
 
-SQLite is intentionally ephemeral on Heroku. The normalized `purchase_orders` and `purchase_order_items` tables enforce one PO per PR/supplier and one award per request item.
+SQLite is intentionally ephemeral on Heroku. `rfq_dispatches` tracks intended/actual recipients and Gmail thread/reply state. The normalized `purchase_orders` and `purchase_order_items` tables enforce one PO per PR/supplier and one award per request item.
 
 ## Deploy
 

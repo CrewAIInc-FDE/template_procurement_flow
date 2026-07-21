@@ -29,6 +29,31 @@ class ScreeningResult(BaseModel):
     reasoning: str
 
 
+class RfqDispatch(BaseModel):
+    rfq_id: str
+    supplier_id: str
+    supplier_name: str
+    intended_recipient: str = ""
+    actual_recipient: str = ""
+    override_applied: bool = False
+    gmail_message_id: str = ""
+    gmail_thread_id: str = ""
+    status: str  # sent | failed | replied
+    error: str = ""
+    sent_at: str = ""
+    reply_count: int = 0
+    last_reply_at: str = ""
+
+
+class RfqReply(BaseModel):
+    rfq_id: str
+    message_id: str
+    thread_id: str = ""
+    sender: str
+    label_ids: list[str] = Field(default_factory=list)
+    received_at: str
+
+
 class ExtractedQuote(BaseModel):
     """One supplier quote line extracted from an email body or PDF."""
 
@@ -41,12 +66,15 @@ class ExtractedQuote(BaseModel):
     delivery_days: int
     received_at: str
     message_id: str
+    rfq_id: str = ""
+    thread_id: str = ""
     source: str = "email"
     risk_notes: list[str] = Field(default_factory=list)
 
 
 class QuoteCollection(BaseModel):
     quotes: list[ExtractedQuote] = Field(default_factory=list)
+    replies: list[RfqReply] = Field(default_factory=list)
     warnings: list[str] = Field(default_factory=list)
 
 

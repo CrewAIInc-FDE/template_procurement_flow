@@ -246,6 +246,7 @@ img { max-width: 100%; }
 .chip-status-awaiting_review { background: var(--coral); color: #fff; }
 .chip-status-approved { background: var(--green-soft); color: var(--green); }
 .chip-status-rejected { background: var(--red-soft); color: var(--red); }
+.chip-status-rfq_failed { background: var(--red-soft); color: var(--red); }
 .chip-lang { background: transparent; border: 1px solid var(--line); color: var(--text-2); }
 .chip-alerts { background: var(--coral-soft); color: #C4342B; }
 .chip-phase { background: transparent; color: var(--text-2); padding-left: 0; }
@@ -299,6 +300,7 @@ img { max-width: 100%; }
 .items-table th.num { text-align: right; }
 .items-table tfoot td { font-weight: 600; border-top: 2px solid var(--line); }
 .items-sku { display: block; font-family: var(--mono); font-size: 10px; color: var(--text-3); margin-top: 2px; }
+.outreach-table { min-width: 680px; }
 
 /* editable quote proposal */
 .quote-table-wrap { overflow-x: auto; margin: 12px -4px 14px; }

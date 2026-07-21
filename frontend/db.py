@@ -49,6 +49,23 @@ CREATE TABLE IF NOT EXISTS request_items (
   catalog_item_id TEXT, sku TEXT, name TEXT,
   quantity INTEGER, unit_price_usd REAL, line_total_usd REAL
 );
+CREATE TABLE IF NOT EXISTS rfq_dispatches (
+  rfq_id TEXT PRIMARY KEY,
+  pr_number TEXT NOT NULL REFERENCES purchase_requests(pr_number),
+  supplier_id TEXT NOT NULL,
+  supplier_name TEXT NOT NULL,
+  intended_recipient TEXT,
+  actual_recipient TEXT,
+  override_applied INTEGER NOT NULL DEFAULT 0,
+  gmail_message_id TEXT,
+  gmail_thread_id TEXT,
+  status TEXT NOT NULL,
+  error TEXT,
+  sent_at TEXT,
+  reply_count INTEGER NOT NULL DEFAULT 0,
+  last_reply_at TEXT,
+  UNIQUE(pr_number, supplier_id)
+);
 CREATE TABLE IF NOT EXISTS request_artifacts (
   id INTEGER PRIMARY KEY AUTOINCREMENT,
   pr_number TEXT NOT NULL REFERENCES purchase_requests(pr_number),

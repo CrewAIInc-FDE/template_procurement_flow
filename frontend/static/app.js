@@ -14,12 +14,12 @@ const I18N = {
     col_processing: "Processing", col_awaiting: "Awaiting Quotes", col_review: "Quote Review", col_complete: "Complete",
     empty_processing: "NO REQUESTS BEING PROCESSED", empty_awaiting: "NO REQUESTS AWAITING QUOTES", empty_review: "NOTHING TO REVIEW", empty_complete: "NOTHING COMPLETED YET",
     st_submitted: "Processing", st_awaiting_quotes: "Awaiting quotes", st_reviewing_quotes: "Reviewing quotes", st_awaiting_review: "Awaiting review",
-    st_approved: "Approved", st_rejected: "Rejected",
-    phase_screening: "Screening", phase_gmail: "Scanning Gmail", phase_approval: "Applying decision",
+    st_approved: "Approved", st_rejected: "Rejected", st_rfq_failed: "RFQ failed",
+    phase_extracting: "Extracting", phase_screening: "Screening", phase_gmail: "Scanning Gmail", phase_approval: "Applying decision",
     alerts_n: "alerts", alert_1: "alert", sev_high: "High", sev_medium: "Medium",
     urgency_high: "Urgent",
     requested_by: "Requested by",
-    sec_items: "Line items", sec_screening: "Screening", sec_quotes: "Quote proposal",
+    sec_items: "Line items", sec_outreach: "Supplier outreach", sec_screening: "Screening", sec_quotes: "Quote proposal",
     sec_alerts: "Alerts", sec_documents: "Purchase orders", sec_review: "Human review", sec_warnings: "Quote warnings",
     th_item: "Item", th_qty: "Qty", th_unit: "Unit", th_total: "Total",
     estimated_total: "Estimated total", intake_wait: "PROCESSING REQUEST…",
@@ -29,6 +29,9 @@ const I18N = {
     review_prompt: "Review the suggested supplier for each covered item. You can change any selection before approving.",
     approve: "Approve", reject: "Reject", decision_sent: "DECISION SENT — RESUMING FLOW…",
     review_quotes: "Review quotes", review_started: "SCANNING THE INBOX FOR THIS PR…",
+    retry_rfqs: "Retry supplier emails", retry_started: "RETRYING SUPPLIER EMAILS…",
+    th_recipient: "Recipient", th_email_status: "Status", th_reply: "Reply",
+    rfq_sent: "Sent", rfq_failed: "Failed", rfq_replied: "Replied", no_reply: "No reply", demo_routed: "Demo override",
     th_supplier_choice: "Supplier / quote", th_price_score: "Price", th_delivery: "Delivery", th_delivery_score: "Speed", th_score: "Score",
     cheapest: "Least price", fastest: "Fastest", days: "days", no_risks: "No recorded risks", outstanding: "Still awaiting quotes",
     confirm_reject: "Reject this purchase request?",
@@ -63,12 +66,12 @@ const I18N = {
     col_processing: "Procesando", col_awaiting: "Esperando cotizaciones", col_review: "Revisión de cotizaciones", col_complete: "Completas",
     empty_processing: "SIN SOLICITUDES EN PROCESO", empty_awaiting: "SIN SOLICITUDES ESPERANDO COTIZACIÓN", empty_review: "NADA PARA REVISAR", empty_complete: "NADA COMPLETADO AÚN",
     st_submitted: "Procesando", st_awaiting_quotes: "Esperando cotizaciones", st_reviewing_quotes: "Revisando cotizaciones", st_awaiting_review: "Esperando revisión",
-    st_approved: "Aprobada", st_rejected: "Rechazada",
-    phase_screening: "Evaluando", phase_gmail: "Revisando Gmail", phase_approval: "Aplicando decisión",
+    st_approved: "Aprobada", st_rejected: "Rechazada", st_rfq_failed: "Falló el RFQ",
+    phase_extracting: "Extrayendo", phase_screening: "Evaluando", phase_gmail: "Revisando Gmail", phase_approval: "Aplicando decisión",
     alerts_n: "alertas", alert_1: "alerta", sev_high: "Alta", sev_medium: "Media",
     urgency_high: "Urgente",
     requested_by: "Solicitado por",
-    sec_items: "Ítems", sec_screening: "Evaluación", sec_quotes: "Propuesta de compra",
+    sec_items: "Ítems", sec_outreach: "Contacto con proveedores", sec_screening: "Evaluación", sec_quotes: "Propuesta de compra",
     sec_alerts: "Alertas", sec_documents: "Órdenes de compra", sec_review: "Revisión humana", sec_warnings: "Alertas de cotización",
     th_item: "Ítem", th_qty: "Cant.", th_unit: "Unitario", th_total: "Total",
     estimated_total: "Total estimado", intake_wait: "PROCESANDO SOLICITUD…",
@@ -78,6 +81,9 @@ const I18N = {
     review_prompt: "Revisa el proveedor sugerido para cada ítem cubierto. Puedes cambiar cualquier selección antes de aprobar.",
     approve: "Aprobar", reject: "Rechazar", decision_sent: "DECISIÓN ENVIADA — RETOMANDO FLUJO…",
     review_quotes: "Revisar cotizaciones", review_started: "REVISANDO EL BUZÓN PARA ESTA PR…",
+    retry_rfqs: "Reintentar correos", retry_started: "REENVIANDO CORREOS A PROVEEDORES…",
+    th_recipient: "Destinatario", th_email_status: "Estado", th_reply: "Respuesta",
+    rfq_sent: "Enviado", rfq_failed: "Falló", rfq_replied: "Respondido", no_reply: "Sin respuesta", demo_routed: "Override demo",
     th_supplier_choice: "Proveedor / cotización", th_price_score: "Precio", th_delivery: "Entrega", th_delivery_score: "Rapidez", th_score: "Puntaje",
     cheapest: "Menor precio", fastest: "Más rápida", days: "días", no_risks: "Sin riesgos registrados", outstanding: "Aún esperando cotizaciones",
     confirm_reject: "¿Rechazar esta solicitud de compra?",
@@ -112,12 +118,12 @@ const I18N = {
     col_processing: "Processando", col_awaiting: "Aguardando cotações", col_review: "Revisão de cotações", col_complete: "Concluídos",
     empty_processing: "NENHUM PEDIDO EM PROCESSAMENTO", empty_awaiting: "SEM PEDIDOS AGUARDANDO COTAÇÃO", empty_review: "NADA PARA REVISAR", empty_complete: "NADA CONCLUÍDO AINDA",
     st_submitted: "Processando", st_awaiting_quotes: "Aguardando cotações", st_reviewing_quotes: "Revisando cotações", st_awaiting_review: "Aguardando revisão",
-    st_approved: "Aprovado", st_rejected: "Rejeitado",
-    phase_screening: "Avaliando", phase_gmail: "Lendo Gmail", phase_approval: "Aplicando decisão",
+    st_approved: "Aprovado", st_rejected: "Rejeitado", st_rfq_failed: "Falha no RFQ",
+    phase_extracting: "Extraindo", phase_screening: "Avaliando", phase_gmail: "Lendo Gmail", phase_approval: "Aplicando decisão",
     alerts_n: "alertas", alert_1: "alerta", sev_high: "Alta", sev_medium: "Média",
     urgency_high: "Urgente",
     requested_by: "Solicitado por",
-    sec_items: "Itens", sec_screening: "Avaliação", sec_quotes: "Proposta de compra",
+    sec_items: "Itens", sec_outreach: "Contato com fornecedores", sec_screening: "Avaliação", sec_quotes: "Proposta de compra",
     sec_alerts: "Alertas", sec_documents: "Ordens de compra", sec_review: "Revisão humana", sec_warnings: "Alertas de cotação",
     th_item: "Item", th_qty: "Qtd.", th_unit: "Unitário", th_total: "Total",
     estimated_total: "Total estimado", intake_wait: "PROCESSANDO PEDIDO…",
@@ -127,6 +133,9 @@ const I18N = {
     review_prompt: "Revise o fornecedor sugerido para cada item coberto. Você pode alterar qualquer seleção antes de aprovar.",
     approve: "Aprovar", reject: "Rejeitar", decision_sent: "DECISÃO ENVIADA — RETOMANDO FLUXO…",
     review_quotes: "Revisar cotações", review_started: "LENDO A CAIXA DE ENTRADA PARA ESTA PR…",
+    retry_rfqs: "Tentar e-mails novamente", retry_started: "REENVIANDO E-MAILS AOS FORNECEDORES…",
+    th_recipient: "Destinatário", th_email_status: "Status", th_reply: "Resposta",
+    rfq_sent: "Enviado", rfq_failed: "Falhou", rfq_replied: "Respondido", no_reply: "Sem resposta", demo_routed: "Override demo",
     th_supplier_choice: "Fornecedor / cotação", th_price_score: "Preço", th_delivery: "Entrega", th_delivery_score: "Rapidez", th_score: "Pontuação",
     cheapest: "Menor preço", fastest: "Mais rápida", days: "dias", no_risks: "Sem riscos registrados", outstanding: "Ainda aguardando cotações",
     confirm_reject: "Rejeitar este pedido de compra?",
@@ -261,7 +270,7 @@ function setupPersona() {
 /* ---------------------------------------------------------------- board */
 
 const COLS = {
-  submitted: "processing", awaiting_quotes: "awaiting",
+  submitted: "processing", rfq_failed: "processing", awaiting_quotes: "awaiting",
   reviewing_quotes: "review", awaiting_review: "review",
   approved: "complete", rejected: "complete",
 };
@@ -279,7 +288,7 @@ function chipStatus(r) {
 function cardHtml(r) {
   const summary = r.justification || r.raw_message || "";
   const badges = [];
-  if (r.status === "reviewing_quotes" && r.phase)
+  if (["submitted", "reviewing_quotes"].includes(r.status) && r.phase)
     badges.push(`<span class="chip chip-phase"><span class="blink-dot"></span>${esc(t("phase_" + r.phase))}…</span>`);
   if (r.alerts_count > 0)
     badges.push(`<span class="chip chip-alerts">${ALERT_SVG}${r.alerts_count} ${esc(r.alerts_count === 1 ? t("alert_1") : t("alerts_n"))}</span>`);
@@ -385,6 +394,31 @@ function quoteReviewHtml(review, actionable) {
   </table></div>`;
 }
 
+function rfqDispatchHtml(dispatches) {
+  if (!dispatches?.length) return "";
+  const rows = dispatches.map((dispatch) => {
+    const statusClass = dispatch.status === "failed" ? "rejected"
+      : dispatch.status === "replied" ? "approved" : "awaiting_quotes";
+    const recipientNote = dispatch.override_applied && dispatch.intended_recipient
+      ? `<span class="items-sku">${esc(t("demo_routed"))} · ${esc(dispatch.intended_recipient)}</span>` : "";
+    const thread = dispatch.gmail_thread_id
+      ? ` · ${esc(dispatch.gmail_thread_id)}` : "";
+    const error = dispatch.error ? `<span class="items-sku">${esc(dispatch.error)}</span>` : "";
+    const reply = dispatch.reply_count
+      ? `${dispatch.reply_count} · ${esc(rel(dispatch.last_reply_at))}` : esc(t("no_reply"));
+    return `<tr>
+      <td><strong>${esc(dispatch.supplier_name)}</strong><span class="items-sku">${esc(dispatch.rfq_id)}${thread}</span></td>
+      <td>${esc(dispatch.actual_recipient || "—")}${recipientNote}</td>
+      <td><span class="chip chip-status-${statusClass}">${esc(t("rfq_" + dispatch.status))}</span>${error}</td>
+      <td class="num">${reply}</td>
+    </tr>`;
+  }).join("");
+  return `<div class="panel"><div class="quote-table-wrap"><table class="items-table outreach-table">
+    <thead><tr><th>${esc(t("th_supplier"))}</th><th>${esc(t("th_recipient"))}</th><th>${esc(t("th_email_status"))}</th><th class="num">${esc(t("th_reply"))}</th></tr></thead>
+    <tbody>${rows}</tbody>
+  </table></div></div>`;
+}
+
 function detailHtml(d) {
   const summary = d.justification || d.raw_message || "";
   const parts = [];
@@ -410,6 +444,10 @@ function detailHtml(d) {
   } else if (d.status === "reviewing_quotes") {
     parts.push(`<div class="section">${sectionHead(t("sec_review"))}<div class="review-box">
       <div class="decision-note"><span class="spinner" aria-hidden="true"></span>${esc(t("review_started"))}</div>
+    </div></div>`);
+  } else if (d.status === "rfq_failed") {
+    parts.push(`<div class="section">${sectionHead(t("sec_review"))}<div class="review-box">
+      <button class="btn btn-approve" data-retry-rfqs>${esc(t("retry_rfqs"))}</button>
     </div></div>`);
   }
 
@@ -447,6 +485,10 @@ function detailHtml(d) {
     parts.push(`<div class="panel panel-grey"><div class="decision-note"><span class="spinner" aria-hidden="true"></span>${esc(t("intake_wait"))}</div></div>`);
   }
   parts.push(`</div>`);
+
+  if (d.rfq_dispatches?.length) {
+    parts.push(`<div class="section">${sectionHead(t("sec_outreach"))}${rfqDispatchHtml(d.rfq_dispatches)}</div>`);
+  }
 
   if (d.screening) {
     const s = d.screening;
@@ -511,6 +553,20 @@ function bindDrawer(d) {
     } catch (error) {
       ev.currentTarget.disabled = false;
       toast(error.message || t("decide_error"), true);
+    }
+  });
+  $("[data-retry-rfqs]")?.addEventListener("click", async (ev) => {
+    ev.currentTarget.disabled = true;
+    ev.currentTarget.textContent = t("retry_started");
+    try {
+      await api(`/api/requests/${d.pr_number}/retry-rfqs`, { method: "POST" });
+      lastDetailJson = "";
+      await pollBoard();
+      await refreshDetail();
+    } catch (error) {
+      ev.currentTarget.disabled = false;
+      ev.currentTarget.textContent = t("retry_rfqs");
+      toast(error.message || t("submit_error"), true);
     }
   });
   document.querySelectorAll("[data-decide]").forEach((btn) =>

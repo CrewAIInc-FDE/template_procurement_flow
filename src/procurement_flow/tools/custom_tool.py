@@ -1,8 +1,9 @@
-"""Read-only Gmail PDF attachment tool used by the quote collector."""
+"""AMP Gmail action helper and read-only PDF attachment tool."""
 
 import base64
 import io
 import json
+from functools import cache
 from typing import Any
 
 import pdfplumber
@@ -14,6 +15,30 @@ from pydantic import BaseModel, Field
 class GmailPdfAttachmentInput(BaseModel):
     message_id: str = Field(..., description="Gmail message ID containing the PDF")
     attachment_id: str = Field(..., description="Gmail attachment ID from get_message")
+
+
+@cache
+def _platform_action(action_name: str):
+    tools = CrewaiPlatformTools(apps=[action_name])
+    action = next(
+        (tool for tool in tools if getattr(tool, "action_name", "") == action_name),
+        None,
+    )
+    if action is None:
+        raise RuntimeError(f"AMP integration action is unavailable: {action_name}")
+    return action
+
+
+def run_platform_action(action_name: str, **kwargs: Any) -> dict:
+    """Run one named AMP integration action and return its JSON response."""
+    action = _platform_action(action_name)
+    payload = action._run(**kwargs)
+    if payload.startswith(("API request failed:", "Error executing action")):
+        raise RuntimeError(payload)
+    try:
+        return json.loads(payload)
+    except json.JSONDecodeError as exc:
+        raise RuntimeError(f"AMP integration returned invalid JSON for {action_name}") from exc
 
 
 def _find_base64_data(value: Any) -> str | None:
@@ -60,14 +85,10 @@ class ReadGmailPdfAttachmentTool(BaseTool):
     args_schema: type[BaseModel] = GmailPdfAttachmentInput
 
     def _run(self, message_id: str, attachment_id: str) -> str:
-        tools = CrewaiPlatformTools(apps=["gmail/get_attachment"])
-        attachment_tool = next(
-            (tool for tool in tools if getattr(tool, "action_name", "") == "gmail/get_attachment"),
-            None,
-        )
-        if attachment_tool is None:
-            return "WARNING: Gmail attachment action is unavailable."
-        payload = attachment_tool._run(userId="me", messageId=message_id, id=attachment_id)
-        if payload.startswith(("API request failed:", "Error executing action")):
-            return f"WARNING: {payload}"
-        return extract_pdf_text(payload)
+        try:
+            payload = run_platform_action(
+                "gmail/get_attachment", userId="me", messageId=message_id, id=attachment_id
+            )
+            return extract_pdf_text(json.dumps(payload))
+        except RuntimeError as exc:
+            return f"WARNING: {exc}"
