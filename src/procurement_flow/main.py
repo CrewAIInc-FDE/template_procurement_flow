@@ -17,7 +17,13 @@ from procurement_flow.procurement import (
     materialize_awards,
     parse_award_feedback,
 )
-from procurement_flow.tools.custom_tool import ReadGmailPdfAttachmentTool, run_platform_action
+from procurement_flow.tools.custom_tool import (
+    GMAIL_FETCH_EMAILS,
+    GMAIL_SEND_EMAIL,
+    ReadGmailPdfAttachmentTool,
+    gmail_quote_tools,
+    run_composio_action,
+)
 from procurement_flow.types import (
     AwardedItem,
     PurchaseOrderDocument,
@@ -39,6 +45,11 @@ HEAVY_INPUT_FIELDS = {
     "existing_awards",
     "existing_purchase_orders",
 }
+COMPOSIO_ENV_VARS = ("COMPOSIO_API_KEY", "COMPOSIO_USER_ID")
+
+
+def _missing_composio_env() -> list[str]:
+    return [name for name in COMPOSIO_ENV_VARS if not os.getenv(name, "").strip()]
 
 
 def _email_address(value: str) -> str:
@@ -186,9 +197,11 @@ class ProcurementFlow(Flow[ProcurementState]):
             self.state.warnings.append("CLP per USD must be configured before quote review.")
             self.state.final_status = "awaiting_quotes"
             return
-        if not os.getenv("CREWAI_PLATFORM_INTEGRATION_TOKEN"):
+        missing_composio_env = _missing_composio_env()
+        if missing_composio_env:
             self.state.warnings.append(
-                "Gmail is not configured: CREWAI_PLATFORM_INTEGRATION_TOKEN is missing."
+                "Composio Gmail is not configured: "
+                f"{', '.join(missing_composio_env)} is missing."
             )
             self.state.final_status = "awaiting_quotes"
             return
@@ -337,22 +350,24 @@ class ProcurementFlow(Flow[ProcurementState]):
                     raise ValueError("no valid supplier recipient is configured")
                 if not override and actual.rsplit("@", 1)[1].endswith(".example"):
                     raise ValueError("placeholder supplier emails require the demo override")
-                if not os.getenv("CREWAI_PLATFORM_INTEGRATION_TOKEN"):
-                    raise ValueError("CREWAI_PLATFORM_INTEGRATION_TOKEN is missing")
+                missing_composio_env = _missing_composio_env()
+                if missing_composio_env:
+                    raise ValueError(f"{', '.join(missing_composio_env)} is missing")
 
-                existing = run_platform_action(
-                    "gmail/fetch_emails",
-                    userId="me",
-                    q=f'in:sent "{dispatch.rfq_id}"',
-                    maxResults=10,
-                    includeSpamTrash=False,
+                existing = run_composio_action(
+                    GMAIL_FETCH_EMAILS,
+                    user_id="me",
+                    query=f'in:sent "{dispatch.rfq_id}"',
+                    max_results=10,
+                    include_spam_trash=False,
+                    include_payload=False,
                 )
                 message_id, thread_id = _find_message_ref(existing)
                 if not message_id:
-                    sent = run_platform_action(
-                        "gmail/send_email",
-                        userId="me",
-                        to=actual,
+                    sent = run_composio_action(
+                        GMAIL_SEND_EMAIL,
+                        user_id="me",
+                        recipient_email=actual,
                         subject=(
                             f"[{dispatch.rfq_id}] Quote request for {self._pr_number()} "
                             f"— {dispatch.supplier_name}"
@@ -419,22 +434,24 @@ class ProcurementFlow(Flow[ProcurementState]):
                 "report missing fields, and never invent a price or delivery date."
             ),
             llm=MODEL,
-            apps=["gmail/fetch_emails", "gmail/get_message"],
-            tools=[ReadGmailPdfAttachmentTool()],
+            tools=[*gmail_quote_tools(), ReadGmailPdfAttachmentTool()],
             allow_delegation=False,
             verbose=True,
         )
         prompt = (
             f"Collect quotes for purchase request {pr_number}.\n\n"
             "Required procedure:\n"
-            "1. For each RFQ record below, search Gmail using exactly its query. Use "
-            "userId='me', maxResults=100, includeSpamTrash=false, and follow every "
-            "pageToken until exhausted. Do not run any other inbox search.\n"
-            "2. Fetch every matching message in full. Accept it only if its sender equals "
+            "1. For each RFQ record below, call GMAIL_FETCH_EMAILS using exactly its "
+            "query. Use user_id='me', max_results=100, include_spam_trash=false, "
+            "include_payload=false, and follow every page_token until exhausted. Do not "
+            "run any other inbox search.\n"
+            "2. Fetch every matching message in full with "
+            "GMAIL_FETCH_MESSAGE_BY_MESSAGE_ID. Accept it only if its sender equals "
             "actual_recipient, it has the INBOX label, it is not gmail_message_id, and its "
             "thread ID equals gmail_thread_id when that recorded thread ID is non-empty. "
             "Read its body. For PDF attachments "
-            "only, call read_gmail_pdf_attachment with the message ID and attachment ID. "
+            "only, call read_gmail_pdf_attachment with the message ID, attachment ID, "
+            "and filename. "
             "Do not read Office files and do not attempt OCR.\n"
             "3. Record every accepted inbound message in replies, even if its quote data "
             "is incomplete. Preserve rfq_id, message_id, thread_id, sender, label_ids, "

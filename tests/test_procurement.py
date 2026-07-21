@@ -1,7 +1,7 @@
 import json
 import os
 import unittest
-from unittest.mock import patch
+from unittest.mock import Mock, patch
 
 from procurement_flow import main as flow_main
 from procurement_flow.main import ProcurementFlow
@@ -11,6 +11,7 @@ from procurement_flow.procurement import (
     parse_award_feedback,
     validate_awards,
 )
+from procurement_flow.tools import custom_tool
 from procurement_flow.tools.custom_tool import extract_pdf_text
 from procurement_flow.types import QuoteCollection, RequestDraft, RfqDispatch, ScreeningResult
 
@@ -181,7 +182,8 @@ class FlowContractTests(unittest.TestCase):
             "line_items": [{"request_item_id": 1, "quantity": 1}],
         }
         with patch.dict(os.environ, {}, clear=False):
-            os.environ.pop("CREWAI_PLATFORM_INTEGRATION_TOKEN", None)
+            os.environ.pop("COMPOSIO_API_KEY", None)
+            os.environ.pop("COMPOSIO_USER_ID", None)
             flow.run_quote_collection()
         flow.finish_no_quotes()
         self.assertEqual(flow.state.final_status, "awaiting_quotes")
@@ -237,32 +239,55 @@ class FlowContractTests(unittest.TestCase):
 
         def action(name, **kwargs):
             calls.append((name, kwargs))
-            if name == "gmail/fetch_emails":
+            if name == "GMAIL_FETCH_EMAILS":
                 return {"messages": []}
-            return {"id": "sent-1", "threadId": "thread-1"}
+            return {"id": "sent-1", "thread_id": "thread-1"}
 
         with patch.dict(os.environ, {
-            "CREWAI_PLATFORM_INTEGRATION_TOKEN": "token",
+            "COMPOSIO_API_KEY": "key",
+            "COMPOSIO_USER_ID": "procurement-demo",
             "DEMO_RFQ_RECIPIENT_OVERRIDE": "personal@example.com",
-        }), patch.object(flow_main, "run_platform_action", side_effect=action):
+        }), patch.object(flow_main, "run_composio_action", side_effect=action):
             flow._dispatch_rfq_emails()
 
         self.assertEqual(flow.state.rfq_dispatches[0].actual_recipient, "personal@example.com")
         self.assertTrue(flow.state.rfq_dispatches[0].override_applied)
-        self.assertEqual(calls[-1][0], "gmail/send_email")
-        self.assertEqual(calls[-1][1]["to"], "personal@example.com")
+        self.assertEqual(calls[-1][0], "GMAIL_SEND_EMAIL")
+        self.assertEqual(calls[-1][1]["recipient_email"], "personal@example.com")
 
         flow.state.rfq_dispatches = []
         with patch.dict(os.environ, {
-            "CREWAI_PLATFORM_INTEGRATION_TOKEN": "token",
+            "COMPOSIO_API_KEY": "key",
+            "COMPOSIO_USER_ID": "procurement-demo",
             "DEMO_RFQ_RECIPIENT_OVERRIDE": "personal@example.com",
         }), patch.object(
-            flow_main, "run_platform_action",
-            return_value={"messages": [{"id": "sent-1", "threadId": "thread-1"}]},
+            flow_main, "run_composio_action",
+            return_value={"messages": [{"id": "sent-1", "thread_id": "thread-1"}]},
         ) as existing:
             flow._dispatch_rfq_emails()
         self.assertEqual(existing.call_count, 1)
         self.assertEqual(flow.state.rfq_dispatches[0].gmail_thread_id, "thread-1")
+
+    def test_composio_action_unwraps_data_and_surfaces_errors(self):
+        client = Mock()
+        client.tools.execute.return_value = {
+            "successful": True,
+            "data": {"id": "message-1"},
+            "error": None,
+        }
+        with patch.dict(os.environ, {"COMPOSIO_USER_ID": "procurement-demo"}), \
+             patch.object(custom_tool, "_composio", return_value=client):
+            self.assertEqual(
+                custom_tool.run_composio_action("GMAIL_SEND_EMAIL", body="hello"),
+                {"id": "message-1"},
+            )
+            client.tools.execute.return_value = {
+                "successful": False,
+                "data": {},
+                "error": "not connected",
+            }
+            with self.assertRaisesRegex(RuntimeError, "not connected"):
+                custom_tool.run_composio_action("GMAIL_SEND_EMAIL", body="hello")
 
     def test_only_recorded_inbound_thread_can_become_a_quote(self):
         flow = ProcurementFlow()

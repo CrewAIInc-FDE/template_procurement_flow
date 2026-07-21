@@ -1,44 +1,79 @@
-"""AMP Gmail action helper and read-only PDF attachment tool."""
+"""Composio Gmail helpers and read-only PDF attachment tool."""
 
 import base64
 import io
 import json
+import os
+import tempfile
 from functools import cache
+from pathlib import Path
 from typing import Any
 
 import pdfplumber
 from crewai.tools import BaseTool
-from crewai_tools import CrewaiPlatformTools
 from pydantic import BaseModel, Field
+
+GMAIL_FETCH_EMAILS = "GMAIL_FETCH_EMAILS"
+GMAIL_FETCH_MESSAGE = "GMAIL_FETCH_MESSAGE_BY_MESSAGE_ID"
+GMAIL_GET_ATTACHMENT = "GMAIL_GET_ATTACHMENT"
+GMAIL_SEND_EMAIL = "GMAIL_SEND_EMAIL"
 
 
 class GmailPdfAttachmentInput(BaseModel):
     message_id: str = Field(..., description="Gmail message ID containing the PDF")
     attachment_id: str = Field(..., description="Gmail attachment ID from get_message")
+    file_name: str = Field(default="quote.pdf", description="PDF attachment filename")
 
 
 @cache
-def _platform_action(action_name: str):
-    tools = CrewaiPlatformTools(apps=[action_name])
-    action = next(
-        (tool for tool in tools if getattr(tool, "action_name", "") == action_name),
-        None,
+def _composio():
+    api_key = os.getenv("COMPOSIO_API_KEY", "").strip()
+    if not api_key:
+        raise RuntimeError("COMPOSIO_API_KEY is missing")
+    os.environ.setdefault(
+        "COMPOSIO_CACHE_DIR", str(Path(tempfile.gettempdir()) / "composio-cache")
     )
-    if action is None:
-        raise RuntimeError(f"AMP integration action is unavailable: {action_name}")
-    return action
+    from composio import Composio
+    from composio_crewai import CrewAIProvider
+
+    return Composio(
+        api_key=api_key,
+        provider=CrewAIProvider(),
+        toolkit_versions={
+            "gmail": os.getenv("COMPOSIO_GMAIL_TOOLKIT_VERSION", "20260702_01")
+        },
+    )
 
 
-def run_platform_action(action_name: str, **kwargs: Any) -> dict:
-    """Run one named AMP integration action and return its JSON response."""
-    action = _platform_action(action_name)
-    payload = action._run(**kwargs)
-    if payload.startswith(("API request failed:", "Error executing action")):
-        raise RuntimeError(payload)
-    try:
-        return json.loads(payload)
-    except json.JSONDecodeError as exc:
-        raise RuntimeError(f"AMP integration returned invalid JSON for {action_name}") from exc
+def _composio_user_id() -> str:
+    user_id = os.getenv("COMPOSIO_USER_ID", "").strip()
+    if not user_id:
+        raise RuntimeError("COMPOSIO_USER_ID is missing")
+    return user_id
+
+
+def run_composio_action(action_name: str, **arguments: Any) -> dict:
+    """Execute one Gmail action for the configured Composio user."""
+    result = _composio().tools.execute(
+        action_name,
+        arguments=arguments,
+        user_id=_composio_user_id(),
+    )
+    if not result.get("successful"):
+        raise RuntimeError(
+            f"Composio action {action_name} failed: {result.get('error') or 'unknown error'}"
+        )
+    data = result.get("data")
+    return data if isinstance(data, dict) else {"data": data}
+
+
+@cache
+def gmail_quote_tools() -> list[BaseTool]:
+    """Return only the Gmail read tools used by the quote analyst."""
+    return _composio().tools.get(
+        user_id=_composio_user_id(),
+        tools=[GMAIL_FETCH_EMAILS, GMAIL_FETCH_MESSAGE],
+    )
 
 
 def _find_base64_data(value: Any) -> str | None:
@@ -80,14 +115,21 @@ class ReadGmailPdfAttachmentTool(BaseTool):
     name: str = "read_gmail_pdf_attachment"
     description: str = (
         "Read text from a PDF attachment in an already-fetched Gmail message. "
-        "Use only for PDF attachments whose message and attachment IDs came from gmail/get_message."
+        "Use only for PDF attachments whose IDs came from "
+        "GMAIL_FETCH_MESSAGE_BY_MESSAGE_ID."
     )
     args_schema: type[BaseModel] = GmailPdfAttachmentInput
 
-    def _run(self, message_id: str, attachment_id: str) -> str:
+    def _run(
+        self, message_id: str, attachment_id: str, file_name: str = "quote.pdf"
+    ) -> str:
         try:
-            payload = run_platform_action(
-                "gmail/get_attachment", userId="me", messageId=message_id, id=attachment_id
+            payload = run_composio_action(
+                GMAIL_GET_ATTACHMENT,
+                user_id="me",
+                message_id=message_id,
+                attachment_id=attachment_id,
+                file_name=file_name,
             )
             return extract_pdf_text(json.dumps(payload))
         except RuntimeError as exc:

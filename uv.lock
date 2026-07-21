@@ -517,8 +517,55 @@ wheels = [
 ]
 
 [[package]]
+name = "composio"
+version = "0.15.0"
+source = { registry = "https://pypi.org/simple" }
+dependencies = [
+    { name = "composio-client" },
+    { name = "json-schema-to-pydantic" },
+    { name = "openai" },
+    { name = "pydantic" },
+    { name = "pysher" },
+    { name = "typing-extensions" },
+]
+sdist = { url = "https://files.pythonhosted.org/packages/58/c6/5d1e9b111776bbc3685e5f6122032c26fa4f165cd5dd12dd315bf4411843/composio-0.15.0.tar.gz", hash = "sha256:b6deb3a12e021799826fb191cb74b9c3fdf9555ba908a832ec6b1a6b63d4da17", size = 209932, upload-time = "2026-06-18T08:35:54.892Z" }
+wheels = [
+    { url = "https://files.pythonhosted.org/packages/22/75/ceca9c76c5df4bb34004b58b9f27f0ceb1f803efa261a8ee768ce4bfcbdb/composio-0.15.0-py3-none-any.whl", hash = "sha256:1c51dfb7a4e291a353accaea8d090e2b630361a9b7398502f604cddfb93a8b6a", size = 141009, upload-time = "2026-06-18T08:35:42.187Z" },
+]
+
+[[package]]
+name = "composio-client"
+version = "1.39.0"
+source = { registry = "https://pypi.org/simple" }
+dependencies = [
+    { name = "anyio" },
+    { name = "distro" },
+    { name = "httpx" },
+    { name = "pydantic" },
+    { name = "sniffio" },
+    { name = "typing-extensions" },
+]
+sdist = { url = "https://files.pythonhosted.org/packages/0d/78/efc71b2df0d580c4550ee60644193644ae3ddc06fc89f3fc92998db6393c/composio_client-1.39.0.tar.gz", hash = "sha256:2086493925117b956a3166da18414925cb50829172c8211591137fcdc3d60c7d", size = 248246, upload-time = "2026-05-12T14:28:13.071Z" }
+wheels = [
+    { url = "https://files.pythonhosted.org/packages/88/59/f4ddca56b9f02c8fed3277584111a687c9be986d0d2e8b421c80a20caa03/composio_client-1.39.0-py3-none-any.whl", hash = "sha256:bf6050dc0d523bd1e9d52e39e162f5b23bd029aa441b5c4a18e1751aae58571d", size = 284163, upload-time = "2026-05-12T14:28:11.681Z" },
+]
+
+[[package]]
+name = "composio-crewai"
+version = "0.18.0"
+source = { registry = "https://pypi.org/simple" }
+dependencies = [
+    { name = "composio" },
+    { name = "crewai" },
+]
+sdist = { url = "https://files.pythonhosted.org/packages/dc/9d/104a51faecbdce150bf0f53bf3006cef7375f69bf5105c7b3ed2a8e2269a/composio_crewai-0.18.0.tar.gz", hash = "sha256:e7910af7c6e79091ff8910ed1aa8c906d294b3291dabf78e34af1b118c184d54", size = 3230, upload-time = "2026-07-15T20:40:12.132Z" }
+wheels = [
+    { url = "https://files.pythonhosted.org/packages/f7/86/4cd1b904fa78185113933d224b98f698dc6c97877cc7e9869f498a8b72d1/composio_crewai-0.18.0-py3-none-any.whl", hash = "sha256:565d04b3c3fe77893bc224d0d3bebc641bebf75b911f29688fd5e8a1d6c987e9", size = 3506, upload-time = "2026-07-15T20:40:00.862Z" },
+]
+
+[[package]]
 name = "crewai"
-version = "1.15.4"
+version = "1.15.5"
 source = { registry = "https://pypi.org/simple" }
 dependencies = [
     { name = "aiofiles" },
@@ -553,9 +600,9 @@ dependencies = [
     { name = "tomli" },
     { name = "tomli-w" },
 ]
-sdist = { url = "https://files.pythonhosted.org/packages/c3/56/ea69c9da117a9f0383f10250a01ca2d3726f24a990a4160a93396be2beff/crewai-1.15.4.tar.gz", hash = "sha256:e41fd19147ad2ac1c482fd7233e4adc4d8dae82e7b7014dd65aef1c1dd0f3e25", size = 7794807, upload-time = "2026-07-17T14:34:20.004Z" }
+sdist = { url = "https://files.pythonhosted.org/packages/e7/38/c8be0986822aebcb4af0c54f4f7b8919d43203eba94cf0364fed86234144/crewai-1.15.5.tar.gz", hash = "sha256:c4b7d590dfbffbaa3f64284458065db6f63c200dcf686d5062a90a58aa38d92c", size = 7794921, upload-time = "2026-07-20T16:34:15.52Z" }
 wheels = [
-    { url = "https://files.pythonhosted.org/packages/a2/69/efea134272b7ca3e9cf19d5561b95c106faca7d8555af5cfc4e497ed0225/crewai-1.15.4-py3-none-any.whl", hash = "sha256:bb7210ccbac3c75c231966fb5dd8d77797945c5ddb220ca3b54b50bf0a31a711", size = 1080087, upload-time = "2026-07-17T14:34:17.555Z" },
+    { url = "https://files.pythonhosted.org/packages/0e/62/0a2b577dfcb125303bea63c4da7009087fa63f6733e81b68be667137c515/crewai-1.15.5-py3-none-any.whl", hash = "sha256:8269a7eff57fea2cbc4dff137fcd0d8c1f6109911272e13fc4b32ade5172ccc1", size = 1079876, upload-time = "2026-07-20T16:34:13.697Z" },
 ]
 
 [package.optional-dependencies]
@@ -565,7 +612,7 @@ tools = [
 
 [[package]]
 name = "crewai-cli"
-version = "1.15.4"
+version = "1.15.5"
 source = { registry = "https://pypi.org/simple" }
 dependencies = [
     { name = "appdirs" },
@@ -585,14 +632,14 @@ dependencies = [
     { name = "tomli-w" },
     { name = "uv" },
 ]
-sdist = { url = "https://files.pythonhosted.org/packages/ab/ca/023077b7dcabd69c46fe1ffcf76097194c8a9bdbe81092457215e354918a/crewai_cli-1.15.4.tar.gz", hash = "sha256:2f6e4acb4963dc6e4b441c5956fe3de0165563ba3927530c68cc75eefdca4f67", size = 220284, upload-time = "2026-07-17T14:34:23.415Z" }
+sdist = { url = "https://files.pythonhosted.org/packages/14/18/afbfa0be63cd739e8a880ff352f138e0fcc9c60884b554e75d6e53697e18/crewai_cli-1.15.5.tar.gz", hash = "sha256:bee73f2f7cd792fae0e9ce7c58fb5d347211d0a85c3aa7d8623e571dc5e7578f", size = 220283, upload-time = "2026-07-20T16:34:18.872Z" }
 wheels = [
-    { url = "https://files.pythonhosted.org/packages/4e/63/63f78ccc50900c886a847ea5b87ae0561f21ef20d7e57ac6de11554ace55/crewai_cli-1.15.4-py3-none-any.whl", hash = "sha256:b1779077f3daca7c9707901f3272ae127e613a9d564a830a8d38982325a606bb", size = 189840, upload-time = "2026-07-17T14:34:22.054Z" },
+    { url = "https://files.pythonhosted.org/packages/ed/13/78de6cc7b90efb00e8a63f6b14e6149f0390d8fa8a9f93b691f3651db1f8/crewai_cli-1.15.5-py3-none-any.whl", hash = "sha256:4cc881b38c401be6e128087ecc6fbe99d40ca509bf6b98439877a4894e8a00a2", size = 189841, upload-time = "2026-07-20T16:34:17.225Z" },
 ]
 
 [[package]]
 name = "crewai-core"
-version = "1.15.4"
+version = "1.15.5"
 source = { registry = "https://pypi.org/simple" }
 dependencies = [
     { name = "appdirs" },
@@ -608,14 +655,14 @@ dependencies = [
     { name = "rich" },
     { name = "tomli" },
 ]
-sdist = { url = "https://files.pythonhosted.org/packages/54/21/6ba91296495f1d47c482ca8e76009177d62f62a8c085dcd2ee0ff0fea1a8/crewai_core-1.15.4.tar.gz", hash = "sha256:9ba33a62c444f0fb0f499658ef78ffdae2ae2a54273c9275f80db994519e4a1c", size = 23435, upload-time = "2026-07-17T14:34:25.794Z" }
+sdist = { url = "https://files.pythonhosted.org/packages/32/fc/f951e28d21135e4acaf5bb33805ceb94b3a39cdd434d491265a5b53c0d72/crewai_core-1.15.5.tar.gz", hash = "sha256:29d2396e94cac94af12884ebe2b0aabc1850af3290d829e6e60482ee05dfc4b9", size = 23436, upload-time = "2026-07-20T16:34:20.784Z" }
 wheels = [
-    { url = "https://files.pythonhosted.org/packages/7a/40/39ed45f604160f6ab4e1e4a99c9a30236e19f23c57ae8f8fa6e04ebb256d/crewai_core-1.15.4-py3-none-any.whl", hash = "sha256:3af1675c6f0a5fe394edafd227d2a43ded25997c246aacbe682ee745b889a07e", size = 30974, upload-time = "2026-07-17T14:34:24.542Z" },
+    { url = "https://files.pythonhosted.org/packages/15/9a/9a5d2a36397e7b4e08efa4eb427eb82d195ae3bca5f6abdb85caec5dbe5f/crewai_core-1.15.5-py3-none-any.whl", hash = "sha256:275e073ff2a2c44ee3dde25516ad79a43e6e24c955f2330d05ddfee3a3249ab7", size = 30973, upload-time = "2026-07-20T16:34:19.851Z" },
 ]
 
 [[package]]
 name = "crewai-tools"
-version = "1.15.4"
+version = "1.15.5"
 source = { registry = "https://pypi.org/simple" }
 dependencies = [
     { name = "beautifulsoup4" },
@@ -627,9 +674,9 @@ dependencies = [
     { name = "tiktoken" },
     { name = "youtube-transcript-api" },
 ]
-sdist = { url = "https://files.pythonhosted.org/packages/dd/b9/27e9570062bc38c6e30eb1c4b3f405a2112bdd449f28d849b9c07cf54dad/crewai_tools-1.15.4.tar.gz", hash = "sha256:bc4e1f594f3a64d08a09c5ac56af96c37bd30c729aace3a645b3ec53bba82174", size = 898357, upload-time = "2026-07-17T14:34:31.332Z" }
+sdist = { url = "https://files.pythonhosted.org/packages/03/5c/e5a46de6e7d8a809a1daa4ac87cdc291037d670b36e69f0d31a9a07007e7/crewai_tools-1.15.5.tar.gz", hash = "sha256:1770da7ab5fd628c4bc755d52fd94693699578e25b1e713414099584126738d8", size = 898353, upload-time = "2026-07-20T16:34:25.702Z" }
 wheels = [
-    { url = "https://files.pythonhosted.org/packages/d8/c2/66e919d4ad013c4b3dd66689f82190befda63a938dcd535da2e4987598a4/crewai_tools-1.15.4-py3-none-any.whl", hash = "sha256:01976b4a8d8a7f60ca703b9b10ac44e6488a85daf2c7efe09fb468835fead09d", size = 811457, upload-time = "2026-07-17T14:34:29.487Z" },
+    { url = "https://files.pythonhosted.org/packages/39/ba/fdae694011908b86eb564cff3c1fff2086b9e33028aea88ffaf6424d75c0/crewai_tools-1.15.5-py3-none-any.whl", hash = "sha256:18bec99061131e488c7011268ce3b889c6c402a545a8f6075b8a599b5d115982", size = 811458, upload-time = "2026-07-20T16:34:24.039Z" },
 ]
 
 [[package]]
@@ -1248,6 +1295,18 @@ source = { registry = "https://pypi.org/simple" }
 sdist = { url = "https://files.pythonhosted.org/packages/7c/60/484ee009c1867ddc5ffe0ff2131b82e80bbf13fdb59f3d93834f98e56a9f/json_repair-0.25.3.tar.gz", hash = "sha256:4ee970581a05b0b258b749eb8bcac21de380edda97c3717a4edfafc519ec21a4", size = 20619, upload-time = "2024-07-10T13:42:18.977Z" }
 wheels = [
     { url = "https://files.pythonhosted.org/packages/f0/9e/2ab68cc0ff030e1ef78329d7b933473d3ad2c7d0e66aede6a7c87f74753c/json_repair-0.25.3-py3-none-any.whl", hash = "sha256:f00b510dd21b31ebe72581bdb07e66381df2883d6f640c89605e482882c12b17", size = 12812, upload-time = "2024-07-10T13:42:16.918Z" },
+]
+
+[[package]]
+name = "json-schema-to-pydantic"
+version = "0.4.11"
+source = { registry = "https://pypi.org/simple" }
+dependencies = [
+    { name = "pydantic" },
+]
+sdist = { url = "https://files.pythonhosted.org/packages/60/d8/423895b918706c80db1cee679c13fbe810200b9a9d9a9442c7a58d35c3f2/json_schema_to_pydantic-0.4.11.tar.gz", hash = "sha256:35448ed711a28dd33396b095c8492939b4925aa30eb31942e9b8e08d04279465", size = 56597, upload-time = "2026-03-09T20:53:55.692Z" }
+wheels = [
+    { url = "https://files.pythonhosted.org/packages/f3/64/7cfeb8c6d2a5e73e0f8d732032aa62be9a7724c04beb461d677de0b4beb3/json_schema_to_pydantic-0.4.11-py3-none-any.whl", hash = "sha256:da2ccc39d070ee03dbcf0517d16720e3e33f7aa8d61257ace09af8c51bd46348", size = 17842, upload-time = "2026-03-09T20:53:54.576Z" },
 ]
 
 [[package]]
@@ -2419,11 +2478,17 @@ name = "procurement-flow"
 version = "0.1.0"
 source = { editable = "." }
 dependencies = [
+    { name = "composio" },
+    { name = "composio-crewai" },
     { name = "crewai", extra = ["tools"] },
 ]
 
 [package.metadata]
-requires-dist = [{ name = "crewai", extras = ["tools"], specifier = ">=1.15.4,<2.0.0" }]
+requires-dist = [
+    { name = "composio", specifier = ">=0.15.0" },
+    { name = "composio-crewai", specifier = ">=0.18.0" },
+    { name = "crewai", extras = ["tools"], specifier = ">=1.15.5,<1.16.0" },
+]
 
 [[package]]
 name = "propcache"
@@ -2918,6 +2983,16 @@ sdist = { url = "https://files.pythonhosted.org/packages/e7/82/28175b2414effca1c
 wheels = [
     { url = "https://files.pythonhosted.org/packages/bd/24/12818598c362d7f300f18e74db45963dbcb85150324092410c8b49405e42/pyproject_hooks-1.2.0-py3-none-any.whl", hash = "sha256:9e5c6bfa8dcc30091c74b0cf803c81fdd29d94f01992a7707bc97babb1141913", size = 10216, upload-time = "2024-09-29T09:24:11.978Z" },
 ]
+
+[[package]]
+name = "pysher"
+version = "1.0.8"
+source = { registry = "https://pypi.org/simple" }
+dependencies = [
+    { name = "requests" },
+    { name = "websocket-client" },
+]
+sdist = { url = "https://files.pythonhosted.org/packages/12/a0/d0638470df605ce266991fb04f74c69ab1bed3b90ac3838e9c3c8b69b66a/Pysher-1.0.8.tar.gz", hash = "sha256:7849c56032b208e49df67d7bd8d49029a69042ab0bb45b2ed59fa08f11ac5988", size = 9071, upload-time = "2022-10-10T13:41:09.936Z" }
 
 [[package]]
 name = "python-dateutil"

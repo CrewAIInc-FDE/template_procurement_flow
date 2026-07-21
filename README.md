@@ -19,7 +19,7 @@ The processes share one AMP deployment but never chain automatically. The portal
 
 ### Intake
 
-The chat sends natural language in any language. Flask allocates `PR-####` synchronously, so the chat can confirm the request without waiting for AI output. Intake maps the request to the bundled catalog, screens it, selects suppliers by category, and sends an RFQ from the Gmail account connected in AMP. Rejected requests never contact suppliers.
+The chat sends natural language in any language. Flask allocates `PR-####` synchronously, so the chat can confirm the request without waiting for AI output. Intake maps the request to the bundled catalog, screens it, selects suppliers by category, and sends an RFQ from the Gmail account connected through Composio. Rejected requests never contact suppliers.
 
 ```json
 {
@@ -37,7 +37,7 @@ Each email has a stable reference such as `RFQ-PR-1001-S-005`. Before sending, t
 
 The quote-review kickoff receives outstanding request items, existing awards/PO numbers, and the RFQ dispatch records created during intake. Screening has already happened before supplier outreach; flags remain visible but do not alter quote scores.
 
-The inbox analyst has only `gmail/fetch_emails` and `gmail/get_message`. PDF content is read through the local `read_gmail_pdf_attachment` tool, which calls `gmail/get_attachment` and extracts text with `pdfplumber`. For each recorded RFQ it searches:
+The inbox analyst has only `GMAIL_FETCH_EMAILS` and `GMAIL_FETCH_MESSAGE_BY_MESSAGE_ID`. PDF content is read through the local `read_gmail_pdf_attachment` tool, which calls `GMAIL_GET_ATTACHMENT` and extracts text with `pdfplumber`. For each recorded RFQ it searches:
 
 ```text
 in:inbox -from:me from:<actual-recipient> "RFQ-PR-####-S-###"
@@ -84,8 +84,8 @@ POs are deterministic Markdown internal drafts. A PR has one stable PO per suppl
 
 ## Configure AMP
 
-1. Connect Gmail on AMP's Integrations page.
-2. Set `CREWAI_PLATFORM_INTEGRATION_TOKEN` to the Enterprise Token.
+1. In [Composio](https://platform.composio.dev), connect the Gmail account under a stable user ID such as `procurement-demo`.
+2. Set `COMPOSIO_API_KEY` and set `COMPOSIO_USER_ID` to that exact user ID on the AMP deployment.
 3. Set `OPENAI_API_KEY` and optionally `OPENAI_MODEL_NAME`.
 4. For the demo, set `DEMO_RFQ_RECIPIENT_OVERRIDE` to a mailbox different from the connected sending account.
 5. Configure the deployment's HITL webhook as described in `docs/amp-contract.md`.
@@ -108,7 +108,7 @@ uv run --with flask --with gunicorn --with requests --with markdown --with pytho
   python frontend/app.py
 ```
 
-Without `DEPLOYMENT_URL`, the portal runs the Flow in-process. Quote review still requires the AMP Gmail Enterprise Token and local HITL waits on the terminal; the full portal approval experience is intended for the AMP deployment.
+Without `DEPLOYMENT_URL`, the portal runs the Flow in-process. Quote review still requires `COMPOSIO_API_KEY`, `COMPOSIO_USER_ID`, and a connected Gmail account; local HITL waits on the terminal. The full portal approval experience is intended for the AMP deployment.
 
 ## Key files
 
