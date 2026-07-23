@@ -1,8 +1,12 @@
 import json
 import os
+import tempfile
 import unittest
+from pathlib import Path
 from types import SimpleNamespace
 from unittest.mock import Mock, patch
+
+import pdfplumber
 
 from procurement_flow import main as flow_main
 from procurement_flow.crews.intake_crew.intake_crew import ProcurementIntakeCrew
@@ -11,6 +15,7 @@ from procurement_flow.procurement import (
     build_quote_review,
     generate_purchase_orders,
     parse_award_feedback,
+    render_purchase_order_pdf,
     validate_awards,
 )
 from procurement_flow.tools import gmail_tools
@@ -178,6 +183,25 @@ class PurchaseOrderTests(unittest.TestCase):
         self.assertEqual(len(documents), 1)
         self.assertEqual(documents[0].po_number, "PO-1001-01")
         self.assertEqual(documents[0].item_ids, [1, 2])
+
+    def test_vendor_ready_pdf_contains_only_its_purchase_order(self):
+        documents = generate_purchase_orders(
+            "PR-1001",
+            [],
+            [self._award(1, "S-1", "Alpha", "Q1")],
+            [],
+            950,
+        )
+        with tempfile.TemporaryDirectory() as temp_dir:
+            path = render_purchase_order_pdf(
+                documents[0], Path(temp_dir) / "PO-1001-01.pdf"
+            )
+            with pdfplumber.open(path) as pdf:
+                text = "\n".join(page.extract_text() or "" for page in pdf.pages)
+        self.assertIn("PURCHASE ORDER PO-1001-01", text)
+        self.assertIn("Supplier: Alpha", text)
+        self.assertIn("Item 1", text)
+        self.assertNotIn("INTERNAL DRAFT", text)
 
 
 class FlowContractTests(unittest.TestCase):
@@ -488,6 +512,119 @@ class FlowContractTests(unittest.TestCase):
         self.assertEqual([reply.message_id for reply in sanitized.replies], ["reply-1"])
         self.assertEqual(sanitized.quotes[0].supplier_id, "S-001")
         self.assertEqual(sanitized.quotes[0].supplier_name, "Supplier")
+
+    @staticmethod
+    def _po_document():
+        return generate_purchase_orders(
+            "PR-1001",
+            [],
+            [{
+                "request_item_id": 1,
+                "catalog_item_id": "IT-001",
+                "sku": "LAP",
+                "item_name": "Laptop",
+                "quantity": 1,
+                "quote_id": "Q-1",
+                "supplier_id": "S-001",
+                "supplier_name": "Supplier",
+                "unit_price": 100,
+                "currency": "USD",
+                "line_total": 100,
+                "line_total_usd": 100,
+                "delivery_days": 2,
+                "risk_notes": [],
+            }],
+            [],
+            950,
+        )[0]
+
+    @staticmethod
+    def _po_rfq(recipient="personal@example.com"):
+        return RfqDispatch(
+            rfq_id="RFQ-PR-1001-S-001",
+            supplier_id="S-001",
+            supplier_name="Supplier",
+            intended_recipient="quotes@supplier.example",
+            actual_recipient=recipient,
+            override_applied=True,
+            gmail_message_id="rfq-1",
+            status="sent",
+        )
+
+    def test_po_delivery_reuses_same_recipient_and_document(self):
+        flow = ProcurementFlow()
+        with tempfile.TemporaryDirectory(prefix="procurement-po-") as temp_dir, patch.object(
+            flow_main,
+            "run_composio_action",
+            return_value={"messages": [{"id": "existing-po", "threadId": "thread-po"}]},
+        ) as action:
+            result = flow._dispatch_purchase_order(
+                self._po_document(), self._po_rfq(), Mock(), Path(temp_dir)
+            )
+        self.assertEqual((result.status, result.gmail_message_id), ("sent", "existing-po"))
+        self.assertTrue(result.reused)
+        self.assertEqual(result.attempts, 0)
+        query = action.call_args.kwargs["query"]
+        self.assertIn("in:sent to:personal@example.com", query)
+        self.assertIn(result.document_hash, query)
+
+    def test_po_delivery_accepts_id_only_send_response(self):
+        flow = ProcurementFlow()
+
+        def execute(action_name, **kwargs):
+            if action_name == gmail_tools.GMAIL_FETCH_EMAILS:
+                return {"messages": []}
+            return {"id": "sent-po"}
+
+        with tempfile.TemporaryDirectory(prefix="procurement-po-") as temp_dir, patch.object(
+            flow_main, "run_composio_action", side_effect=execute
+        ):
+            result = flow._dispatch_purchase_order(
+                self._po_document(), self._po_rfq(), Mock(), Path(temp_dir)
+            )
+        self.assertEqual((result.status, result.gmail_message_id), ("sent", "sent-po"))
+        self.assertFalse(result.reused)
+        self.assertEqual(result.attempts, 1)
+
+    def test_po_ambiguous_success_polls_sent_without_resending(self):
+        flow = ProcurementFlow()
+        calls = []
+
+        def execute(action_name, **kwargs):
+            calls.append(action_name)
+            return {"messages": []} if action_name == gmail_tools.GMAIL_FETCH_EMAILS else {}
+
+        with tempfile.TemporaryDirectory(prefix="procurement-po-") as temp_dir, patch.object(
+            flow_main, "run_composio_action", side_effect=execute
+        ), patch.object(flow_main.time, "sleep"):
+            result = flow._dispatch_purchase_order(
+                self._po_document(), self._po_rfq(), Mock(), Path(temp_dir)
+            )
+        self.assertEqual(result.status, "failed")
+        self.assertEqual(result.attempts, 1)
+        self.assertEqual(calls.count(gmail_tools.GMAIL_SEND_EMAIL), 1)
+        self.assertIn("verifiable message ID", result.error)
+
+    def test_po_definitive_failures_retry_three_times(self):
+        flow = ProcurementFlow()
+        sends = 0
+
+        def execute(action_name, **kwargs):
+            nonlocal sends
+            if action_name == gmail_tools.GMAIL_FETCH_EMAILS:
+                return {"messages": []}
+            sends += 1
+            raise RuntimeError("mailbox unavailable")
+
+        with tempfile.TemporaryDirectory(prefix="procurement-po-") as temp_dir, patch.object(
+            flow_main, "run_composio_action", side_effect=execute
+        ), patch.object(flow_main.time, "sleep"):
+            result = flow._dispatch_purchase_order(
+                self._po_document(), self._po_rfq(), Mock(), Path(temp_dir)
+            )
+        self.assertEqual((result.status, result.attempts), ("failed", 3))
+        self.assertEqual(sends, 3)
+        self.assertIn("mailbox unavailable", result.error)
 
 
 if __name__ == "__main__":

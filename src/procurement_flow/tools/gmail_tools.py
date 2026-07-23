@@ -52,9 +52,33 @@ def _composio_user_id() -> str:
     return user_id
 
 
-def run_composio_action(action_name: str, **arguments: Any) -> dict:
+def composio_file_client(upload_dir: str | Path):
+    """Return a direct Composio client restricted to one temporary PO directory."""
+    upload_path = Path(upload_dir).resolve()
+    temp_root = Path(tempfile.gettempdir()).resolve()
+    if upload_path.parent != temp_root or not upload_path.name.startswith("procurement-po-"):
+        raise RuntimeError("PO attachment directory is outside the approved temporary path")
+    api_key = os.getenv("COMPOSIO_API_KEY", "").strip()
+    if not api_key:
+        raise RuntimeError("COMPOSIO_API_KEY is missing")
+    os.environ.setdefault("COMPOSIO_CACHE_DIR", str(temp_root / "composio-cache"))
+    from composio import Composio
+    from composio_crewai import CrewAIProvider
+
+    return Composio(
+        api_key=api_key,
+        provider=CrewAIProvider(),
+        toolkit_versions={
+            "gmail": os.getenv("COMPOSIO_GMAIL_TOOLKIT_VERSION", "20260702_01")
+        },
+        dangerously_allow_auto_upload_download_files=True,
+        file_upload_dirs=[str(upload_path)],
+    )
+
+
+def run_composio_action(action_name: str, *, client=None, **arguments: Any) -> dict:
     """Execute one Gmail action for the configured Composio user."""
-    result = _composio().tools.execute(
+    result = (client or _composio()).tools.execute(
         action_name,
         arguments=arguments,
         user_id=_composio_user_id(),

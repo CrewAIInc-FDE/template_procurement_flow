@@ -12,7 +12,7 @@ chat message → PR allocated → request structured and suppliers shortlisted �
 Process 2 — Quote Review Crew (explicit portal action)
 scan Gmail for replies to recorded RFQs → extract email/PDF quote facts
 → rank supplier options per item → pause for human approval
-→ generate/update one internal-draft PO per awarded supplier
+→ generate/update one PO per awarded supplier → email vendor-ready PDFs
 ```
 
 The processes share one AMP deployment but never chain automatically. The portal starts `mode=intake` when chat opens a PR and starts `mode=quote_review` only when an analyst clicks **Review quotes**.
@@ -80,7 +80,9 @@ Every proposal pauses on `@human_feedback`. Portal approval sends the exact edit
 
 Plain `approved` from AMP/email uses the suggested quote IDs. Rejection closes the PR. Partial coverage is allowed: covered items generate POs, uncovered items return to `awaiting_quotes`, and a later cycle only reviews those outstanding items.
 
-POs are deterministic Markdown internal drafts. A PR has one stable PO per supplier (`PO-1001-01`, `PO-1001-02`, …); later awards to the same supplier update that PO instead of creating a duplicate.
+POs are deterministic Markdown records plus vendor-ready PDFs. A PR has one stable PO per supplier (`PO-1001-01`, `PO-1001-02`, …); later awards to the same supplier update that PO instead of creating a duplicate. The Flow sends each PDF to the `actual_recipient` recorded on that supplier's RFQ. Before sending it searches Gmail Sent by recipient, PO number, and document hash, so retries reuse the same message while a materially updated PO can be delivered once.
+
+Definitive Gmail failures are retried up to three times. Ambiguous successful responses are verified in Sent without sending again. Delivery failures remain visible on the approved request and can be retried from the portal without repeating quote approval.
 
 ## Configure AMP
 
@@ -89,9 +91,9 @@ POs are deterministic Markdown internal drafts. A PR has one stable PO per suppl
 3. Set `OPENAI_API_KEY` and optionally `OPENAI_MODEL_NAME`.
 4. For the demo, set `DEMO_RFQ_RECIPIENT_OVERRIDE` to a mailbox different from the connected sending account.
 5. Configure the deployment's HITL webhook as described in `docs/amp-contract.md`.
-6. In the portal, set a positive **CLP per USD** value under Manage → Policy.
+6. The portal defaults **CLP per USD** to `950`; adjust it under Manage → Policy when needed.
 
-Supplier seed addresses use the reserved `.example` domain and cannot receive live mail without the demo override. Replace them with real supplier contacts before disabling the override. Decisions and POs remain internal and are not emailed.
+Supplier seed addresses use the reserved `.example` domain and cannot receive live mail without the demo override. For the demo, RFQs and their resulting POs use the same `DEMO_RFQ_RECIPIENT_OVERRIDE`. Replace seed addresses with real supplier contacts before disabling the override.
 
 ## Run and test
 

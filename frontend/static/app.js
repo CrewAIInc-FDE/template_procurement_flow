@@ -15,7 +15,7 @@ const I18N = {
     empty_processing: "NO REQUESTS BEING PROCESSED", empty_awaiting: "NO REQUESTS AWAITING QUOTES", empty_review: "NOTHING TO REVIEW", empty_complete: "NOTHING COMPLETED YET",
     st_submitted: "Processing", st_awaiting_quotes: "Awaiting quotes", st_reviewing_quotes: "Reviewing quotes", st_awaiting_review: "Awaiting review",
     st_approved: "Approved", st_rejected: "Rejected", st_rfq_failed: "RFQ failed",
-    phase_extracting: "Extracting", phase_screening: "Screening", phase_gmail: "Scanning Gmail", phase_approval: "Applying decision",
+    phase_extracting: "Extracting", phase_screening: "Screening", phase_gmail: "Scanning Gmail", phase_approval: "Applying decision", phase_po_delivery: "Sending POs",
     alerts_n: "alerts", alert_1: "alert", sev_high: "High", sev_medium: "Medium",
     urgency_high: "Urgent",
     requested_by: "Requested by",
@@ -30,6 +30,8 @@ const I18N = {
     approve: "Approve", reject: "Reject", decision_sent: "DECISION SENT — RESUMING FLOW…",
     review_quotes: "Review quotes", review_started: "SCANNING THE INBOX FOR THIS PR…",
     retry_rfqs: "Retry supplier emails", retry_started: "RETRYING SUPPLIER EMAILS…",
+    retry_pos: "Retry PO delivery", retrying_pos: "RETRYING PURCHASE ORDERS…",
+    po_sent: "Sent", po_reused: "Already sent", po_failed: "Delivery failed", po_to: "to",
     th_recipient: "Recipient", th_email_status: "Status", th_reply: "Reply",
     rfq_sent: "Sent", rfq_failed: "Failed", rfq_replied: "Replied", no_reply: "No reply", demo_routed: "Demo override",
     th_supplier_choice: "Supplier / quote", th_price_score: "Price", th_delivery: "Delivery", th_delivery_score: "Speed", th_score: "Score",
@@ -67,7 +69,7 @@ const I18N = {
     empty_processing: "SIN SOLICITUDES EN PROCESO", empty_awaiting: "SIN SOLICITUDES ESPERANDO COTIZACIÓN", empty_review: "NADA PARA REVISAR", empty_complete: "NADA COMPLETADO AÚN",
     st_submitted: "Procesando", st_awaiting_quotes: "Esperando cotizaciones", st_reviewing_quotes: "Revisando cotizaciones", st_awaiting_review: "Esperando revisión",
     st_approved: "Aprobada", st_rejected: "Rechazada", st_rfq_failed: "Falló el RFQ",
-    phase_extracting: "Extrayendo", phase_screening: "Evaluando", phase_gmail: "Revisando Gmail", phase_approval: "Aplicando decisión",
+    phase_extracting: "Extrayendo", phase_screening: "Evaluando", phase_gmail: "Revisando Gmail", phase_approval: "Aplicando decisión", phase_po_delivery: "Enviando OCs",
     alerts_n: "alertas", alert_1: "alerta", sev_high: "Alta", sev_medium: "Media",
     urgency_high: "Urgente",
     requested_by: "Solicitado por",
@@ -82,6 +84,8 @@ const I18N = {
     approve: "Aprobar", reject: "Rechazar", decision_sent: "DECISIÓN ENVIADA — RETOMANDO FLUJO…",
     review_quotes: "Revisar cotizaciones", review_started: "REVISANDO EL BUZÓN PARA ESTA PR…",
     retry_rfqs: "Reintentar correos", retry_started: "REENVIANDO CORREOS A PROVEEDORES…",
+    retry_pos: "Reintentar envío de OCs", retrying_pos: "REENVIANDO ÓRDENES DE COMPRA…",
+    po_sent: "Enviada", po_reused: "Ya enviada", po_failed: "Falló el envío", po_to: "a",
     th_recipient: "Destinatario", th_email_status: "Estado", th_reply: "Respuesta",
     rfq_sent: "Enviado", rfq_failed: "Falló", rfq_replied: "Respondido", no_reply: "Sin respuesta", demo_routed: "Override demo",
     th_supplier_choice: "Proveedor / cotización", th_price_score: "Precio", th_delivery: "Entrega", th_delivery_score: "Rapidez", th_score: "Puntaje",
@@ -119,7 +123,7 @@ const I18N = {
     empty_processing: "NENHUM PEDIDO EM PROCESSAMENTO", empty_awaiting: "SEM PEDIDOS AGUARDANDO COTAÇÃO", empty_review: "NADA PARA REVISAR", empty_complete: "NADA CONCLUÍDO AINDA",
     st_submitted: "Processando", st_awaiting_quotes: "Aguardando cotações", st_reviewing_quotes: "Revisando cotações", st_awaiting_review: "Aguardando revisão",
     st_approved: "Aprovado", st_rejected: "Rejeitado", st_rfq_failed: "Falha no RFQ",
-    phase_extracting: "Extraindo", phase_screening: "Avaliando", phase_gmail: "Lendo Gmail", phase_approval: "Aplicando decisão",
+    phase_extracting: "Extraindo", phase_screening: "Avaliando", phase_gmail: "Lendo Gmail", phase_approval: "Aplicando decisão", phase_po_delivery: "Enviando OCs",
     alerts_n: "alertas", alert_1: "alerta", sev_high: "Alta", sev_medium: "Média",
     urgency_high: "Urgente",
     requested_by: "Solicitado por",
@@ -134,6 +138,8 @@ const I18N = {
     approve: "Aprovar", reject: "Rejeitar", decision_sent: "DECISÃO ENVIADA — RETOMANDO FLUXO…",
     review_quotes: "Revisar cotações", review_started: "LENDO A CAIXA DE ENTRADA PARA ESTA PR…",
     retry_rfqs: "Tentar e-mails novamente", retry_started: "REENVIANDO E-MAILS AOS FORNECEDORES…",
+    retry_pos: "Tentar envio das OCs", retrying_pos: "REENVIANDO ORDENS DE COMPRA…",
+    po_sent: "Enviada", po_reused: "Já enviada", po_failed: "Falha no envio", po_to: "para",
     th_recipient: "Destinatário", th_email_status: "Status", th_reply: "Resposta",
     rfq_sent: "Enviado", rfq_failed: "Falhou", rfq_replied: "Respondido", no_reply: "Sem resposta", demo_routed: "Override demo",
     th_supplier_choice: "Fornecedor / cotação", th_price_score: "Preço", th_delivery: "Entrega", th_delivery_score: "Rapidez", th_score: "Pontuação",
@@ -288,7 +294,7 @@ function chipStatus(r) {
 function cardHtml(r) {
   const summary = r.justification || r.raw_message || "";
   const badges = [];
-  if (["submitted", "reviewing_quotes"].includes(r.status) && r.phase)
+  if (r.phase)
     badges.push(`<span class="chip chip-phase"><span class="blink-dot"></span>${esc(t("phase_" + r.phase))}…</span>`);
   if (r.alerts_count > 0)
     badges.push(`<span class="chip chip-alerts">${ALERT_SVG}${r.alerts_count} ${esc(r.alerts_count === 1 ? t("alert_1") : t("alerts_n"))}</span>`);
@@ -422,6 +428,9 @@ function rfqDispatchHtml(dispatches) {
 function detailHtml(d) {
   const summary = d.justification || d.raw_message || "";
   const parts = [];
+  const poDelivery = Object.fromEntries(
+    (d.po_dispatches || []).map((dispatch) => [dispatch.po_number, dispatch])
+  );
 
   parts.push(`
     <div class="drawer-top">
@@ -515,8 +524,19 @@ function detailHtml(d) {
   }
 
   if (d.purchase_orders?.length) {
-    parts.push(`<div class="section">${sectionHead(t("sec_documents"))}${d.purchase_orders.map((po) =>
-      `<div class="doc po-doc"><div class="po-meta">${esc(po.po_number)} · ${esc(po.supplier_name)}</div>${po.html}</div>`).join("")}</div>`);
+    parts.push(`<div class="section">${sectionHead(t("sec_documents"))}${d.purchase_orders.map((po) => {
+      const delivery = poDelivery[po.po_number];
+      const deliveryMeta = delivery
+        ? `<span class="chip chip-status-${delivery.status === "failed" ? "rejected" : "approved"}">${esc(t(delivery.status === "failed" ? "po_failed" : delivery.reused ? "po_reused" : "po_sent"))}</span>
+          ${delivery.actual_recipient ? `<span class="items-sku">${esc(t("po_to"))} ${esc(delivery.actual_recipient)}</span>` : ""}
+          ${delivery.error ? `<span class="items-sku">${esc(delivery.error)}</span>` : ""}`
+        : "";
+      return `<div class="doc po-doc"><div class="po-meta">${esc(po.po_number)} · ${esc(po.supplier_name)} ${deliveryMeta}</div>${po.html}</div>`;
+    }).join("")}`);
+    if (d.po_dispatches?.some((dispatch) => dispatch.status === "failed")) {
+      parts.push(`<div class="review-box"><button class="btn btn-approve" data-retry-pos ${d.phase === "po_delivery" ? "disabled" : ""}>${esc(t(d.phase === "po_delivery" ? "retrying_pos" : "retry_pos"))}</button></div>`);
+    }
+    parts.push(`</div>`);
   }
   if (d.status === "rejected" && d.rejection_note_html) {
     parts.push(`<div class="section">${sectionHead(t("sec_documents"))}<div class="doc">${d.rejection_note_html}</div></div>`);
@@ -545,6 +565,7 @@ function bindDrawer(d) {
     }));
   $("[data-review-quotes]")?.addEventListener("click", async (ev) => {
     ev.currentTarget.disabled = true;
+    ev.currentTarget.textContent = t("review_started");
     try {
       await api(`/api/requests/${d.pr_number}/review-quotes`, { method: "POST" });
       lastDetailJson = "";
@@ -566,6 +587,20 @@ function bindDrawer(d) {
     } catch (error) {
       ev.currentTarget.disabled = false;
       ev.currentTarget.textContent = t("retry_rfqs");
+      toast(error.message || t("submit_error"), true);
+    }
+  });
+  $("[data-retry-pos]")?.addEventListener("click", async (ev) => {
+    ev.currentTarget.disabled = true;
+    ev.currentTarget.textContent = t("retrying_pos");
+    try {
+      await api(`/api/requests/${d.pr_number}/retry-pos`, { method: "POST" });
+      lastDetailJson = "";
+      await pollBoard();
+      await refreshDetail();
+    } catch (error) {
+      ev.currentTarget.disabled = false;
+      ev.currentTarget.textContent = t("retry_pos");
       toast(error.message || t("submit_error"), true);
     }
   });

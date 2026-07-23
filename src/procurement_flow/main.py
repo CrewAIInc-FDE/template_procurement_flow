@@ -1,8 +1,12 @@
 #!/usr/bin/env python
+import hashlib
 import json
 import os
+import time
+from datetime import datetime, timezone
 from email.utils import parseaddr
 from pathlib import Path
+from tempfile import TemporaryDirectory
 
 from crewai.flow import Flow, human_feedback, listen, router, start
 from pydantic import BaseModel, Field
@@ -14,14 +18,22 @@ from procurement_flow.procurement import (
     generate_purchase_orders,
     materialize_awards,
     parse_award_feedback,
+    render_purchase_order_pdf,
 )
 from procurement_flow.tools.gmail_tools import (
+    GMAIL_FETCH_EMAILS,
+    GMAIL_SEND_EMAIL,
     ReadGmailPdfAttachmentTool,
+    composio_file_client,
+    find_message_ref,
     gmail_dispatch_tools,
     gmail_quote_tools,
+    run_composio_action,
 )
 from procurement_flow.types import (
     AwardedItem,
+    PurchaseOrderDispatch,
+    PurchaseOrderDispatchBatch,
     PurchaseOrderDocument,
     QuoteCollection,
     QuoteReview,
@@ -60,6 +72,8 @@ def gmail_reply_query(dispatch: RfqDispatch) -> str:
 class ProcurementState(BaseModel):
     # kickoff inputs
     mode: str = "intake"  # intake | quote_review
+    operation: str = "review_quotes"  # review_quotes | retry_pos
+    retry_return_status: str = "approved"
     message: str = ""
     employee: dict = Field(default_factory=dict)
     request: dict = Field(default_factory=dict)
@@ -77,6 +91,7 @@ class ProcurementState(BaseModel):
     quote_review: QuoteReview | None = None
     new_awards: list[AwardedItem] = Field(default_factory=list)
     purchase_orders: list[PurchaseOrderDocument] = Field(default_factory=list)
+    po_dispatch_batch: PurchaseOrderDispatchBatch | None = None
     final_status: str = ""  # rfq_failed | awaiting_quotes | needs_review | approved | rejected
     rejection_md: str = ""
     alerts: list[dict] = Field(default_factory=list)
@@ -101,6 +116,8 @@ class ProcurementFlow(Flow[ProcurementState]):
 
     @router(receive)
     def dispatch(self):
+        if self.state.mode == "quote_review" and self.state.operation == "retry_pos":
+            return "retry_pos"
         return self.state.mode
 
     # ------------------------------------------------------------- intake
@@ -269,15 +286,30 @@ class ProcurementFlow(Flow[ProcurementState]):
                 existing_purchase_orders=self.state.existing_purchase_orders,
                 clp_per_usd=self.state.clp_per_usd,
             )
+            self.state.po_dispatch_batch = self._dispatch_purchase_orders()
+            self.state.warnings.extend(self.state.po_dispatch_batch.warnings)
             self.state.final_status = (
                 "awaiting_quotes"
                 if self.state.quote_review.uncovered_item_ids
                 else "approved"
             )
+            self._add_warning_alerts()
         except ValueError as exc:
             self.state.warnings.append(f"Award approval was not applied: {exc}")
             self._add_warning_alerts()
             self.state.final_status = "awaiting_quotes"
+        return self._envelope()
+
+    @listen("retry_pos")
+    def retry_purchase_orders(self):
+        self.state.po_dispatch_batch = self._dispatch_purchase_orders()
+        self.state.warnings.extend(self.state.po_dispatch_batch.warnings)
+        self._add_warning_alerts()
+        self.state.final_status = (
+            self.state.retry_return_status
+            if self.state.retry_return_status in {"approved", "awaiting_quotes"}
+            else "approved"
+        )
         return self._envelope()
 
     @listen("rejected")
@@ -378,6 +410,215 @@ class ProcurementFlow(Flow[ProcurementState]):
             dispatch.status = "replied"
             dispatch.reply_count = len({reply.message_id for reply in replies})
             dispatch.last_reply_at = max(reply.received_at for reply in replies)
+
+    def _dispatch_purchase_orders(self) -> PurchaseOrderDispatchBatch:
+        batch = PurchaseOrderDispatchBatch()
+        dispatch_by_supplier = {
+            dispatch.supplier_id: dispatch for dispatch in self.state.rfq_dispatches
+        }
+        missing = _missing_composio_env()
+        if missing:
+            error = f"{', '.join(missing)} is missing"
+            for po in self.state.purchase_orders:
+                batch.dispatches.append(
+                    self._failed_po_dispatch(
+                        po, dispatch_by_supplier.get(po.supplier_id), error
+                    )
+                )
+            batch.warnings.append(f"PO delivery is retryable: {error}.")
+            return batch
+
+        with TemporaryDirectory(prefix="procurement-po-") as temp_dir:
+            try:
+                client = composio_file_client(temp_dir)
+            except RuntimeError as exc:
+                for po in self.state.purchase_orders:
+                    batch.dispatches.append(
+                        self._failed_po_dispatch(
+                            po, dispatch_by_supplier.get(po.supplier_id), str(exc)
+                        )
+                    )
+                batch.warnings.append(f"PO delivery is retryable: {exc}.")
+                return batch
+            for po in self.state.purchase_orders:
+                dispatch = dispatch_by_supplier.get(po.supplier_id)
+                try:
+                    result = self._dispatch_purchase_order(
+                        po, dispatch, client, Path(temp_dir)
+                    )
+                except Exception as exc:
+                    result = self._failed_po_dispatch(po, dispatch, str(exc))
+                batch.dispatches.append(result)
+                if result.status == "failed":
+                    batch.warnings.append(
+                        f"{po.po_number} was generated but not delivered: {result.error}"
+                    )
+        return batch
+
+    def _dispatch_purchase_order(
+        self,
+        po: PurchaseOrderDocument,
+        rfq: RfqDispatch | None,
+        client,
+        temp_dir: Path,
+    ) -> PurchaseOrderDispatch:
+        recipient = ""
+        if rfq and "\n" not in rfq.actual_recipient and "\r" not in rfq.actual_recipient:
+            recipient = parseaddr(rfq.actual_recipient)[1].strip().casefold()
+        if not rfq or not recipient:
+            return self._failed_po_dispatch(
+                po, rfq, "No validated RFQ recipient is recorded for this supplier."
+            )
+
+        document_hash = hashlib.sha256(
+            po.model_dump_json().encode("utf-8")
+        ).hexdigest()[:12]
+        query = (
+            f'in:sent to:{recipient} "{po.po_number}" "{document_hash}"'
+        )
+        pdf_path = render_purchase_order_pdf(
+            po, temp_dir / f"{po.po_number}.pdf"
+        )
+        subject = f"Purchase Order {po.po_number} for {po.pr_number}"
+        body = (
+            f"Hello {po.supplier_name},\n\n"
+            f"Attached is approved purchase order {po.po_number} for {po.pr_number}.\n"
+            f"Document reference: {document_hash}\n\n"
+            "Please confirm receipt.\n"
+        )
+        send_attempts = 0
+        last_error = ""
+        for cycle in range(3):
+            try:
+                message_id, thread_id = find_message_ref(
+                    run_composio_action(
+                        GMAIL_FETCH_EMAILS,
+                        client=client,
+                        query=query,
+                        user_id="me",
+                    )
+                )
+            except RuntimeError as exc:
+                last_error = f"Gmail Sent verification failed: {exc}"
+                if cycle < 2:
+                    time.sleep(cycle + 1)
+                continue
+            if message_id:
+                return self._successful_po_dispatch(
+                    po, rfq, document_hash, message_id, thread_id, send_attempts, True
+                )
+
+            send_attempts += 1
+            try:
+                sent = run_composio_action(
+                    GMAIL_SEND_EMAIL,
+                    client=client,
+                    user_id="me",
+                    recipient_email=recipient,
+                    subject=subject,
+                    body=body,
+                    is_html=False,
+                    attachment=str(pdf_path),
+                )
+            except RuntimeError as exc:
+                last_error = str(exc)
+                if cycle < 2:
+                    time.sleep(cycle + 1)
+                continue
+            message_id, thread_id = find_message_ref(sent)
+            if message_id:
+                return self._successful_po_dispatch(
+                    po, rfq, document_hash, message_id, thread_id, send_attempts, False
+                )
+
+            for delay in (0, 1, 2):
+                if delay:
+                    time.sleep(delay)
+                try:
+                    message_id, thread_id = find_message_ref(
+                        run_composio_action(
+                            GMAIL_FETCH_EMAILS,
+                            client=client,
+                            query=query,
+                            user_id="me",
+                        )
+                    )
+                except RuntimeError as exc:
+                    last_error = f"Gmail Sent verification failed: {exc}"
+                    continue
+                if message_id:
+                    return self._successful_po_dispatch(
+                        po,
+                        rfq,
+                        document_hash,
+                        message_id,
+                        thread_id,
+                        send_attempts,
+                        False,
+                    )
+            return self._failed_po_dispatch(
+                po,
+                rfq,
+                last_error
+                or "Gmail reported success without a verifiable message ID.",
+                send_attempts,
+                document_hash,
+            )
+
+        return self._failed_po_dispatch(
+            po,
+            rfq,
+            last_error or "Gmail delivery failed after three attempts.",
+            send_attempts,
+            document_hash,
+        )
+
+    @staticmethod
+    def _successful_po_dispatch(
+        po: PurchaseOrderDocument,
+        rfq: RfqDispatch,
+        document_hash: str,
+        message_id: str,
+        thread_id: str,
+        attempts: int,
+        reused: bool,
+    ) -> PurchaseOrderDispatch:
+        return PurchaseOrderDispatch(
+            po_number=po.po_number,
+            document_hash=document_hash,
+            supplier_id=po.supplier_id,
+            supplier_name=po.supplier_name,
+            intended_recipient=rfq.intended_recipient,
+            actual_recipient=rfq.actual_recipient,
+            override_applied=rfq.override_applied,
+            gmail_message_id=message_id,
+            gmail_thread_id=thread_id,
+            status="sent",
+            reused=reused,
+            attempts=attempts,
+            sent_at=datetime.now(timezone.utc).isoformat(timespec="seconds"),
+        )
+
+    @staticmethod
+    def _failed_po_dispatch(
+        po: PurchaseOrderDocument,
+        rfq: RfqDispatch | None,
+        error: str,
+        attempts: int = 0,
+        document_hash: str = "",
+    ) -> PurchaseOrderDispatch:
+        return PurchaseOrderDispatch(
+            po_number=po.po_number,
+            document_hash=document_hash,
+            supplier_id=po.supplier_id,
+            supplier_name=po.supplier_name,
+            intended_recipient=rfq.intended_recipient if rfq else "",
+            actual_recipient=rfq.actual_recipient if rfq else "",
+            override_applied=rfq.override_applied if rfq else False,
+            status="failed",
+            attempts=attempts,
+            error=error,
+        )
 
     def _pr_number(self) -> str:
         return self.state.request.get("pr_number", "PR-DRAFT")

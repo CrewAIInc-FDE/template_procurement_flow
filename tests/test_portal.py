@@ -81,6 +81,14 @@ class PortalWorkflowTests(unittest.TestCase):
         other = "```python\nprint('keep the fence')\n```"
         self.assertEqual(portal.strip_md_fence(other), other)
 
+    def test_fx_defaults_to_950_without_overwriting_a_positive_rate(self):
+        portal.set_setting("clp_per_usd", "")
+        portal.init_db()
+        self.assertEqual(float(portal.get_setting("clp_per_usd")), 950)
+        portal.set_setting("clp_per_usd", 875)
+        portal.init_db()
+        self.assertEqual(float(portal.get_setting("clp_per_usd")), 875)
+
     def test_intake_stops_at_awaiting_quotes(self):
         pr = portal.allocate_pr("E-001", "Need one laptop")
         self._kickoff(pr, "intake-1", "intake")
@@ -239,6 +247,76 @@ class PortalWorkflowTests(unittest.TestCase):
             "decision": "approved",
             "awards": [{"request_item_id": item_id, "quote_id": "Q-2"}],
         })
+
+    def test_po_delivery_failure_is_visible_and_retry_is_idempotent(self):
+        pr = self._request(1)
+        with portal.db() as conn:
+            item_id = conn.execute(
+                "SELECT id FROM request_items WHERE pr_number=?", (pr,)
+            ).fetchone()[0]
+        self._kickoff(pr, "review-1")
+        po = self._po(pr, [item_id])
+        portal.process_envelope(pr, "review-1", {
+            "final_status": "approved",
+            "purchase_orders": [po],
+            "po_dispatch_batch": {
+                "dispatches": [{
+                    "po_number": po["po_number"],
+                    "supplier_id": po["supplier_id"],
+                    "supplier_name": po["supplier_name"],
+                    "actual_recipient": "personal@example.com",
+                    "status": "failed",
+                    "attempts": 3,
+                    "error": "mailbox unavailable",
+                }],
+                "warnings": ["mailbox unavailable"],
+            },
+            "warnings": ["PO was generated but not delivered: mailbox unavailable"],
+        })
+        detail = self.client.get(f"/api/requests/{pr}").get_json()
+        self.assertEqual(detail["status"], "approved")
+        self.assertEqual(detail["po_dispatches"][0]["status"], "failed")
+
+        captured = {}
+
+        def fake_start(pr_number, mode, inputs):
+            captured.update(inputs)
+            self._kickoff(pr_number, "po-retry-1", mode)
+            return "po-retry-1"
+
+        with patch.object(portal.amp, "start_kickoff", side_effect=fake_start) as start:
+            first = self.client.post(f"/api/requests/{pr}/retry-pos")
+            second = self.client.post(f"/api/requests/{pr}/retry-pos")
+        self.assertEqual(first.status_code, 202)
+        self.assertFalse(first.get_json()["already_running"])
+        self.assertTrue(second.get_json()["already_running"])
+        self.assertEqual(start.call_count, 1)
+        self.assertEqual(captured["mode"], "quote_review")
+        self.assertEqual(captured["operation"], "retry_pos")
+        self.assertEqual(captured["purchase_orders"][0]["items"][0]["request_item_id"], item_id)
+
+        portal.process_envelope(pr, "po-retry-1", {
+            "final_status": "approved",
+            "purchase_orders": [po],
+            "po_dispatch_batch": {
+                "dispatches": [{
+                    "po_number": po["po_number"],
+                    "supplier_id": po["supplier_id"],
+                    "supplier_name": po["supplier_name"],
+                    "actual_recipient": "personal@example.com",
+                    "gmail_message_id": "sent-po",
+                    "status": "sent",
+                    "attempts": 1,
+                }],
+                "warnings": [],
+            },
+            "warnings": [],
+            "alerts": [],
+        })
+        detail = self.client.get(f"/api/requests/{pr}").get_json()
+        self.assertEqual(detail["po_dispatches"][0]["gmail_message_id"], "sent-po")
+        self.assertEqual(detail["warnings"], [])
+        self.assertEqual(detail["alerts"], [])
 
 
 if __name__ == "__main__":

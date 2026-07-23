@@ -3,6 +3,7 @@
 Board + chat widget frontend for the ProcurementFlow AMP deployment.
 See docs/frontend-plan.md and docs/amp-contract.md (repo root) for the contract.
 """
+# ruff: noqa: E402
 
 import json
 import logging
@@ -180,6 +181,64 @@ def build_quote_review_inputs(pr_number):
     }
 
 
+def build_po_retry_inputs(pr_number):
+    inputs = build_quote_review_inputs(pr_number)
+    with db() as conn:
+        status = conn.execute(
+            "SELECT status FROM purchase_requests WHERE pr_number=?", (pr_number,)
+        ).fetchone()[0]
+        rows = [dict(row) for row in conn.execute(
+            "SELECT po_number, supplier_id, supplier_name, markdown, total_usd"
+            " FROM purchase_orders WHERE pr_number=? ORDER BY po_number",
+            (pr_number,),
+        ).fetchall()]
+        artifacts = {
+            row["kind"]: json.loads(row["content"])
+            for row in conn.execute(
+                "SELECT kind, content FROM request_artifacts"
+                " WHERE pr_number=? AND kind IN ('warnings','alerts')",
+                (pr_number,),
+            ).fetchall()
+        }
+
+    def is_delivery_warning(message):
+        return (
+            "generated but not delivered" in message
+            or message.startswith("PO delivery is retryable:")
+        )
+
+    awards_by_supplier = {}
+    for award in inputs["existing_awards"]:
+        awards_by_supplier.setdefault(award["supplier_id"], []).append(award)
+    inputs.update({
+        "operation": "retry_pos",
+        "retry_return_status": status,
+        "purchase_orders": [
+            {
+                **row,
+                "pr_number": pr_number,
+                "items": awards_by_supplier.get(row["supplier_id"], []),
+                "item_ids": [
+                    item["request_item_id"]
+                    for item in awards_by_supplier.get(row["supplier_id"], [])
+                ],
+            }
+            for row in rows
+        ],
+        "warnings": [
+            warning
+            for warning in artifacts.get("warnings", [])
+            if not is_delivery_warning(warning)
+        ],
+        "alerts": [
+            alert
+            for alert in artifacts.get("alerts", [])
+            if not is_delivery_warning(alert.get("message", ""))
+        ],
+    })
+    return inputs
+
+
 # ------------------------------------------------------- envelope pipeline
 
 def process_envelope(pr_number, kickoff_id, envelope):
@@ -262,12 +321,14 @@ def process_envelope(pr_number, kickoff_id, envelope):
                 ("quote_review", "quote_review", False),
                 ("alerts", "alerts", False),
                 ("warnings", "warnings", False),
+                ("po_dispatch_batch", "po_dispatch_batch", False),
                 ("rejection_note", "rejection_md", True),
             ):
                 val = envelope.get(key)
-                if val:
+                if val or kind in {"alerts", "warnings", "po_dispatch_batch"}:
+                    empty_value = {} if kind == "po_dispatch_batch" else []
                     upsert_artifact(conn, pr_number, kind,
-                                    strip_md_fence(val) if is_md else json.dumps(val))
+                                    strip_md_fence(val) if is_md else json.dumps(val or empty_value))
             for po in envelope.get("purchase_orders") or []:
                 ts = now()
                 conn.execute(
@@ -411,6 +472,10 @@ def request_detail(pr_number):
         d["rfq_dispatches"] = rfq_dispatches(conn, pr_number)
     for kind in ("screening", "quote_review", "alerts", "warnings"):
         d[kind] = json.loads(arts[kind]) if kind in arts else None
+    po_dispatch_batch = json.loads(arts["po_dispatch_batch"]) if "po_dispatch_batch" in arts else {}
+    if not isinstance(po_dispatch_batch, dict):
+        po_dispatch_batch = {}
+    d["po_dispatches"] = po_dispatch_batch.get("dispatches", [])
     d["rejection_note_html"] = render_md(arts.get("rejection_note"))
     d["purchase_orders"] = []
     for po in purchase_orders:
@@ -440,7 +505,7 @@ def review_quotes(pr_number):
             " AND state='pending' ORDER BY created_at DESC LIMIT 1",
             (pr_number,),
         ).fetchone()
-        if pr["status"] in ("reviewing_quotes", "awaiting_review"):
+        if pending or pr["status"] in ("reviewing_quotes", "awaiting_review"):
             return jsonify({
                 "kickoff_id": pending["kickoff_id"] if pending else None,
                 "already_running": True,
@@ -473,6 +538,55 @@ def review_quotes(pr_number):
         with db() as conn:
             set_status(conn, pr_number, "awaiting_quotes")
         return jsonify({"error": "could not start quote review"}), 502
+    return jsonify({"kickoff_id": kickoff_id, "already_running": False}), 202
+
+
+@app.post("/api/requests/<pr_number>/retry-pos")
+def retry_pos(pr_number):
+    with db() as conn:
+        conn.execute("BEGIN IMMEDIATE")
+        pr = conn.execute(
+            "SELECT status FROM purchase_requests WHERE pr_number=?", (pr_number,)
+        ).fetchone()
+        if not pr:
+            return jsonify({"error": "not found"}), 404
+        if pr["status"] not in ("approved", "awaiting_quotes"):
+            return jsonify({"error": "request has no retryable PO delivery"}), 409
+        artifact = conn.execute(
+            "SELECT content FROM request_artifacts"
+            " WHERE pr_number=? AND kind='po_dispatch_batch'",
+            (pr_number,),
+        ).fetchone()
+        batch = json.loads(artifact["content"]) if artifact else {}
+        if not any(row.get("status") == "failed" for row in batch.get("dispatches", [])):
+            return jsonify({"error": "request has no failed PO delivery"}), 409
+        pending = conn.execute(
+            "SELECT kickoff_id FROM kickoffs WHERE pr_number=? AND mode='quote_review'"
+            " AND state='pending' ORDER BY created_at DESC LIMIT 1",
+            (pr_number,),
+        ).fetchone()
+        if pending:
+            return jsonify({
+                "kickoff_id": pending["kickoff_id"],
+                "already_running": True,
+            }), 202
+        conn.execute(
+            "UPDATE purchase_requests SET phase='po_delivery', updated_at=?"
+            " WHERE pr_number=?",
+            (now(), pr_number),
+        )
+    try:
+        kickoff_id = amp.start_kickoff(
+            pr_number, "quote_review", build_po_retry_inputs(pr_number)
+        )
+    except Exception:
+        log.exception("PO delivery retry failed to start for %s", pr_number)
+        with db() as conn:
+            conn.execute(
+                "UPDATE purchase_requests SET phase=NULL, updated_at=? WHERE pr_number=?",
+                (now(), pr_number),
+            )
+        return jsonify({"error": "could not retry PO delivery"}), 502
     return jsonify({"kickoff_id": kickoff_id, "already_running": False}), 202
 
 

@@ -5,7 +5,23 @@ from __future__ import annotations
 import json
 import re
 from collections import defaultdict
+from pathlib import Path
 from typing import Iterable
+
+from reportlab.lib import colors
+from reportlab.lib.enums import TA_RIGHT
+from reportlab.lib.pagesizes import A4
+from reportlab.lib.styles import ParagraphStyle, getSampleStyleSheet
+from reportlab.lib.units import mm
+from reportlab.platypus import (
+    KeepTogether,
+    LongTable,
+    Paragraph,
+    SimpleDocTemplate,
+    Spacer,
+    Table,
+    TableStyle,
+)
 
 from procurement_flow.types import (
     AwardedItem,
@@ -274,7 +290,7 @@ def generate_purchase_orders(
     existing_purchase_orders: Iterable[dict],
     clp_per_usd: float,
 ) -> list[PurchaseOrderDocument]:
-    """Return one stable internal-draft PO per supplier across award cycles."""
+    """Return one stable vendor-ready PO per supplier across award cycles."""
     by_item: dict[int, AwardedItem] = {}
     for raw in [*existing_awards, *new_awards]:
         item = raw if isinstance(raw, AwardedItem) else AwardedItem.model_validate(raw)
@@ -328,7 +344,7 @@ def generate_purchase_orders(
         )
         markdown = (
             f"# Purchase Order {po_number}\n\n"
-            "> **INTERNAL DRAFT — not sent to supplier**\n\n"
+            "> **APPROVED PURCHASE ORDER**\n\n"
             f"- **Purchase request:** {pr_number}\n"
             f"- **Supplier:** {items[0].supplier_name}\n"
             f"- **Supplier ID:** {supplier_id}\n"
@@ -354,3 +370,158 @@ def generate_purchase_orders(
             )
         )
     return documents
+
+
+def render_purchase_order_pdf(
+    purchase_order: PurchaseOrderDocument | dict, output_path: str | Path
+) -> Path:
+    """Render one approved purchase order as a vendor-facing PDF."""
+    po = (
+        purchase_order
+        if isinstance(purchase_order, PurchaseOrderDocument)
+        else PurchaseOrderDocument.model_validate(purchase_order)
+    )
+    output = Path(output_path)
+    output.parent.mkdir(parents=True, exist_ok=True)
+    styles = getSampleStyleSheet()
+    styles.add(
+        ParagraphStyle(
+            name="PoMeta",
+            parent=styles["BodyText"],
+            fontSize=9,
+            leading=12,
+            textColor=colors.HexColor("#334155"),
+        )
+    )
+    styles.add(
+        ParagraphStyle(
+            name="PoRight",
+            parent=styles["BodyText"],
+            alignment=TA_RIGHT,
+            fontSize=9,
+            leading=12,
+        )
+    )
+    styles.add(
+        ParagraphStyle(
+            name="PoHeader",
+            parent=styles["BodyText"],
+            fontName="Helvetica-Bold",
+            fontSize=9,
+            leading=11,
+            textColor=colors.white,
+        )
+    )
+    doc = SimpleDocTemplate(
+        str(output),
+        pagesize=A4,
+        leftMargin=16 * mm,
+        rightMargin=16 * mm,
+        topMargin=15 * mm,
+        bottomMargin=15 * mm,
+        title=f"Purchase Order {po.po_number}",
+        author="Procurement",
+    )
+
+    def paragraph(value: object, style: str = "BodyText") -> Paragraph:
+        text = (
+            str(value)
+            .replace("&", "&amp;")
+            .replace("<", "&lt;")
+            .replace(">", "&gt;")
+        )
+        return Paragraph(text, styles[style])
+
+    rows = [
+        [
+            paragraph("Item", "PoHeader"),
+            paragraph("Qty", "PoHeader"),
+            paragraph("Unit price", "PoHeader"),
+            paragraph("Line total", "PoHeader"),
+            paragraph("Delivery", "PoHeader"),
+            paragraph("Quote", "PoHeader"),
+        ]
+    ]
+    totals: dict[str, float] = defaultdict(float)
+    for item in po.items:
+        totals[item.currency] += item.line_total
+        rows.append(
+            [
+                paragraph(item.item_name),
+                paragraph(item.quantity, "PoRight"),
+                paragraph(f"{item.unit_price:,.2f} {item.currency}", "PoRight"),
+                paragraph(f"{item.line_total:,.2f} {item.currency}", "PoRight"),
+                paragraph(f"{item.delivery_days} days", "PoRight"),
+                paragraph(item.quote_id),
+            ]
+        )
+    table = LongTable(
+        rows,
+        repeatRows=1,
+        colWidths=[58 * mm, 11 * mm, 28 * mm, 28 * mm, 24 * mm, 29 * mm],
+    )
+    table.setStyle(
+        TableStyle(
+            [
+                ("BACKGROUND", (0, 0), (-1, 0), colors.HexColor("#0F172A")),
+                ("TEXTCOLOR", (0, 0), (-1, 0), colors.white),
+                ("FONTNAME", (0, 0), (-1, 0), "Helvetica-Bold"),
+                ("VALIGN", (0, 0), (-1, -1), "TOP"),
+                ("GRID", (0, 0), (-1, -1), 0.4, colors.HexColor("#CBD5E1")),
+                ("ROWBACKGROUNDS", (0, 1), (-1, -1), [colors.white, colors.HexColor("#F8FAFC")]),
+                ("LEFTPADDING", (0, 0), (-1, -1), 5),
+                ("RIGHTPADDING", (0, 0), (-1, -1), 5),
+                ("TOPPADDING", (0, 0), (-1, -1), 6),
+                ("BOTTOMPADDING", (0, 0), (-1, -1), 6),
+            ]
+        )
+    )
+    total_rows = [
+        [paragraph(f"{currency} subtotal", "PoMeta"), paragraph(f"{amount:,.2f} {currency}", "PoRight")]
+        for currency, amount in sorted(totals.items())
+    ]
+    total_rows.append(
+        [paragraph("USD equivalent total", "PoMeta"), paragraph(f"{po.total_usd:,.2f} USD", "PoRight")]
+    )
+    totals_table = Table(total_rows, colWidths=[52 * mm, 42 * mm], hAlign="RIGHT")
+    totals_table.setStyle(
+        TableStyle(
+            [
+                ("LINEABOVE", (0, -1), (-1, -1), 0.8, colors.HexColor("#0F172A")),
+                ("TOPPADDING", (0, 0), (-1, -1), 4),
+                ("BOTTOMPADDING", (0, 0), (-1, -1), 4),
+            ]
+        )
+    )
+
+    story = [
+        paragraph(f"PURCHASE ORDER {po.po_number}", "Title"),
+        Spacer(1, 3 * mm),
+        KeepTogether(
+            [
+                paragraph(f"Purchase request: {po.pr_number}", "PoMeta"),
+                paragraph(f"Supplier: {po.supplier_name}", "PoMeta"),
+                paragraph(f"Supplier ID: {po.supplier_id}", "PoMeta"),
+            ]
+        ),
+        Spacer(1, 7 * mm),
+        table,
+        Spacer(1, 5 * mm),
+        totals_table,
+        Spacer(1, 7 * mm),
+        paragraph(
+            "Prices and delivery terms reflect the supplier quotes approved for this purchase order.",
+            "PoMeta",
+        ),
+    ]
+
+    def footer(canvas, document):
+        canvas.saveState()
+        canvas.setFont("Helvetica", 8)
+        canvas.setFillColor(colors.HexColor("#64748B"))
+        canvas.drawString(16 * mm, 8 * mm, po.po_number)
+        canvas.drawRightString(A4[0] - 16 * mm, 8 * mm, f"Page {document.page}")
+        canvas.restoreState()
+
+    doc.build(story, onFirstPage=footer, onLaterPages=footer)
+    return output

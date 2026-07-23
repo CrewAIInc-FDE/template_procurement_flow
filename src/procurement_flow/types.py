@@ -164,3 +164,25 @@ class PurchaseOrderDocument(BaseModel):
     item_ids: list[int]
     items: list[AwardedItem]
     markdown: str
+
+
+class PurchaseOrderDispatch(BaseModel):
+    po_number: str
+    document_hash: str = ""
+    supplier_id: str
+    supplier_name: str
+    intended_recipient: str = ""
+    actual_recipient: str = ""
+    override_applied: bool = False
+    gmail_message_id: str = ""
+    gmail_thread_id: str = ""
+    status: str  # sent | failed
+    reused: bool = False
+    attempts: int = 0
+    error: str = ""
+    sent_at: str = ""
+
+
+class PurchaseOrderDispatchBatch(BaseModel):
+    dispatches: list[PurchaseOrderDispatch] = Field(default_factory=list)
+    warnings: list[str] = Field(default_factory=list)

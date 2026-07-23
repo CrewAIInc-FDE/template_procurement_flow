@@ -123,9 +123,13 @@ CREATE TABLE IF NOT EXISTS settings (
 );
 """
 
-# Required comparison FX. An empty value deliberately blocks quote review until
-# an analyst configures it in the portal (or CLP_PER_USD is set at deploy time).
-DEFAULT_CLP_PER_USD = os.environ.get("CLP_PER_USD", "")
+try:
+    _configured_clp_per_usd = float(os.environ.get("CLP_PER_USD", "950"))
+except ValueError:
+    _configured_clp_per_usd = 950
+DEFAULT_CLP_PER_USD = str(
+    _configured_clp_per_usd if _configured_clp_per_usd > 0 else 950
+)
 
 
 def now():
@@ -178,6 +182,18 @@ def init_db():
             "INSERT OR IGNORE INTO settings (key, value) VALUES ('clp_per_usd', ?)",
             (DEFAULT_CLP_PER_USD,),
         )
+        current = conn.execute(
+            "SELECT value FROM settings WHERE key='clp_per_usd'"
+        ).fetchone()[0]
+        try:
+            valid = float(current) > 0
+        except (TypeError, ValueError):
+            valid = False
+        if not valid:
+            conn.execute(
+                "UPDATE settings SET value=? WHERE key='clp_per_usd'",
+                (DEFAULT_CLP_PER_USD,),
+            )
 
 
 def allocate_pr(employee_id, message):
