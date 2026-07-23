@@ -557,25 +557,44 @@ class FlowContractTests(unittest.TestCase):
         self.assertEqual(context.tool_input["max_results"], 100)
 
     def test_pdf_quote_guardrail_requires_attachment_read(self):
-        incomplete = QuoteCollection.model_validate({
+        collection = QuoteCollection.model_validate({
             "quotes": [{
                 "quote_id": "quote.pdf",
                 "supplier_name": "Supplier",
                 "request_item_id": 1,
-                "unit_price": None,
+                "unit_price": 100,
                 "currency": "USD",
-                "delivery_days": None,
+                "delivery_days": 2,
                 "received_at": "2026-07-23",
                 "message_id": "reply-1",
-                "source": "pdf",
+                "source": "email",
             }]
         })
-        valid, message = QuoteReviewCrew.require_pdf_quote_details(
-            self._output(incomplete)
-        )
+        builder = QuoteReviewCrew(gmail_tools=[], searches=[])
+        builder.capture_pdf_tool_state(SimpleNamespace(
+            tool_name="Gmail Fetch Emails",
+            tool_input={},
+            raw_tool_result={
+                "messages": [{
+                    "id": "reply-1",
+                    "attachments": [{"filename": "quote.pdf"}],
+                }]
+            },
+            tool_result=None,
+        ))
+        valid, message = builder.require_pdf_quote_details(self._output(collection))
 
         self.assertFalse(valid)
         self.assertIn("read_gmail_pdf_attachment", message)
+
+        builder.capture_pdf_tool_state(SimpleNamespace(
+            tool_name="read_gmail_pdf_attachment",
+            tool_input={"message_id": "reply-1"},
+            raw_tool_result="Extracted PDF quote text",
+            tool_result=None,
+        ))
+        valid, _ = builder.require_pdf_quote_details(self._output(collection))
+        self.assertTrue(valid)
 
     @staticmethod
     def _po_document():
