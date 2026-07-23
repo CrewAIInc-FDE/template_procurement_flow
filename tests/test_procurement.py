@@ -10,6 +10,7 @@ import pdfplumber
 
 from procurement_flow import main as flow_main
 from procurement_flow.crews.intake_crew.intake_crew import ProcurementIntakeCrew
+from procurement_flow.crews.quote_review_crew.quote_review_crew import QuoteReviewCrew
 from procurement_flow.main import ProcurementFlow
 from procurement_flow.procurement import (
     build_quote_review,
@@ -492,7 +493,7 @@ class FlowContractTests(unittest.TestCase):
         flow.state.rfq_dispatches = [dispatch]
         self.assertEqual(
             flow_main.gmail_reply_query(dispatch),
-            'in:inbox -from:me from:personal@example.com "RFQ-PR-1001-S-001"',
+            'in:inbox from:personal@example.com "PR-1001" "S-001"',
         )
         collection = QuoteCollection.model_validate({
             "replies": [
@@ -512,6 +513,28 @@ class FlowContractTests(unittest.TestCase):
         self.assertEqual([reply.message_id for reply in sanitized.replies], ["reply-1"])
         self.assertEqual(sanitized.quotes[0].supplier_id, "S-001")
         self.assertEqual(sanitized.quotes[0].supplier_name, "Supplier")
+
+    def test_quote_search_is_canonicalized_before_gmail_call(self):
+        search = {
+            "rfq_id": "RFQ-PR-1001-S-002",
+            "supplier_id": "S-002",
+            "query": 'in:inbox from:personal@example.com "PR-1001" "S-002"',
+        }
+        builder = QuoteReviewCrew(gmail_tools=[], searches=[search])
+        task = builder.quote_extraction_task()
+        context = SimpleNamespace(
+            task=task,
+            tool_name="Gmail Fetch Emails",
+            tool_input={
+                "query": 'in:inbox -from:me "RFQ\u2013PR\u20131001\u2013S\u2013002"',
+                "page_token": "next-page",
+            },
+        )
+
+        self.assertIsNone(builder.canonicalize_gmail_search(context))
+        self.assertEqual(context.tool_input["query"], search["query"])
+        self.assertEqual(context.tool_input["page_token"], "next-page")
+        self.assertEqual(context.tool_input["max_results"], 100)
 
     @staticmethod
     def _po_document():

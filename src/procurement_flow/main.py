@@ -63,9 +63,12 @@ def _missing_composio_env() -> list[str]:
 
 
 def gmail_reply_query(dispatch: RfqDispatch) -> str:
+    request_token = dispatch.rfq_id.removeprefix("RFQ-").removesuffix(
+        f"-{dispatch.supplier_id}"
+    )
     return (
-        f'in:inbox -from:me from:{dispatch.actual_recipient} '
-        f'"{dispatch.rfq_id}"'
+        f'in:inbox from:{dispatch.actual_recipient} '
+        f'"{request_token}" "{dispatch.supplier_id}"'
     )
 
 
@@ -335,6 +338,7 @@ class ProcurementFlow(Flow[ProcurementState]):
         ]
         quote_review = QuoteReviewCrew(
             gmail_tools=[*gmail_quote_tools(), ReadGmailPdfAttachmentTool()],
+            searches=searches,
             model=MODEL,
         )
         result = quote_review.crew().kickoff(
