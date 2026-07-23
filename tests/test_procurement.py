@@ -150,6 +150,29 @@ class QuoteScoringTests(unittest.TestCase):
 
         self.assertIn("Unit price USD 100", text)
 
+    def test_composio_pdf_object_is_downloaded_and_extracted(self):
+        with tempfile.TemporaryDirectory(prefix="procurement-quote-") as temp_dir:
+            source_path = Path(temp_dir) / "source.pdf"
+            document = canvas.Canvas(str(source_path))
+            document.drawString(72, 720, "Delivery 14 days")
+            document.save()
+            response = Mock(status_code=200)
+            response.iter_content.return_value = [source_path.read_bytes()]
+            payload = json.dumps({
+                "attachment": {
+                    "name": "quote.pdf",
+                    "mimetype": "application/pdf",
+                    "s3url": "https://files.example/quote.pdf",
+                }
+            })
+
+            with patch.dict(os.environ, {"COMPOSIO_CACHE_DIR": temp_dir}), patch(
+                "composio.core.models._files.requests.get", return_value=response
+            ):
+                text = extract_pdf_text(payload, temp_dir)
+
+        self.assertIn("Delivery 14 days", text)
+
     def test_incomplete_quote_line_becomes_a_warning(self):
         review = build_quote_review(
             "PR-1001",

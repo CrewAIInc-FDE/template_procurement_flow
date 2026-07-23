@@ -186,6 +186,16 @@ def _find_downloaded_pdf(value: Any, download_dir: Path) -> Path | None:
         ):
             return candidate
     elif isinstance(value, dict):
+        if (
+            isinstance(value.get("s3url"), str)
+            and (
+                value.get("mimetype") == "application/pdf"
+                or str(value.get("name", "")).lower().endswith(".pdf")
+            )
+        ):
+            from composio.core.models._files import FileDownloadable
+
+            return FileDownloadable(**value).download(download_dir)
         for child in value.values():
             found = _find_downloaded_pdf(child, download_dir)
             if found:
