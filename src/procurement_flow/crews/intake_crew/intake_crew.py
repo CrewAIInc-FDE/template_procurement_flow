@@ -102,6 +102,7 @@ class ProcurementIntakeCrew:
         self._dispatch_specs: dict[str, dict] = {}
         self._tool_results: dict[str, dict] = {}
         self._runtime_crew: Crew | None = None
+        self._dispatch_task_id = ""
 
     @agent
     def sourcing_agent(self) -> Agent:
@@ -282,9 +283,17 @@ class ProcurementIntakeCrew:
         ]
         return matches[0] if len(matches) == 1 else None
 
+    def _is_dispatch_context(self, context) -> bool:
+        task = getattr(context, "task", None)
+        return bool(
+            task
+            and self._dispatch_task_id
+            and str(getattr(task, "id", "")) == self._dispatch_task_id
+        )
+
     @before_tool_call
     def guard_gmail_tool(self, context) -> bool | None:
-        if getattr(context, "crew", None) is not self._runtime_crew:
+        if not self._is_dispatch_context(context):
             return None
         action = _action(context.tool_name)
         if not action:
@@ -331,7 +340,7 @@ class ProcurementIntakeCrew:
 
     @after_tool_call
     def capture_gmail_result(self, context) -> str | None:
-        if getattr(context, "crew", None) is not self._runtime_crew:
+        if not self._is_dispatch_context(context):
             return None
         action = _action(context.tool_name)
         match = self._matching_spec(context.tool_input)
@@ -369,6 +378,7 @@ class ProcurementIntakeCrew:
     def validate_dispatch_batch(self, _: TaskOutput) -> tuple[bool, Any]:
         warnings = []
         dispatches = []
+        incomplete_steps = []
         sent_at = datetime.now(timezone.utc).isoformat(timespec="seconds")
         for rfq_id, spec in self._dispatch_specs.items():
             state = self._tool_results.get(rfq_id, {})
@@ -393,6 +403,15 @@ class ProcurementIntakeCrew:
                 warnings.append(
                     f"RFQ to {dispatch.supplier_name} was not sent: {dispatch.error}"
                 )
+                if not spec["error"] and not state.get("error"):
+                    if not state.get("search_complete"):
+                        incomplete_steps.append(
+                            f"call {GMAIL_FETCH_EMAILS} for {rfq_id}"
+                        )
+                    elif not state.get("send_attempted"):
+                        incomplete_steps.append(
+                            f"call {GMAIL_SEND_EMAIL} for {rfq_id}"
+                        )
             dispatches.append(dispatch)
         if not dispatches:
             warnings.append("No approved supplier covers the requested catalog items.")
@@ -400,6 +419,11 @@ class ProcurementIntakeCrew:
             dispatches=dispatches,
             warnings=warnings,
         )
+        if incomplete_steps:
+            return False, (
+                "Gmail dispatch is incomplete. Perform these tool calls before "
+                f"returning the batch: {'; '.join(incomplete_steps)}."
+            )
         return True, self.dispatch_batch.model_dump_json()
 
     @staticmethod
@@ -446,10 +470,11 @@ class ProcurementIntakeCrew:
             tools=self.gmail_tools,
             output_pydantic=RfqDispatchBatch,
             guardrail=self.validate_dispatch_batch,
-            guardrail_max_retries=0,
+            guardrail_max_retries=2,
         )
         # AMP 1.15.5's task reloader expects this runtime flag on subclasses.
         object.__setattr__(conditional, "reloaded", False)
+        self._dispatch_task_id = str(conditional.id)
         return conditional
 
     @after_kickoff

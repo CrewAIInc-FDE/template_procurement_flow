@@ -240,6 +240,7 @@ class FlowContractTests(unittest.TestCase):
     def _tool_context(builder, name, tool_input, result=None):
         return SimpleNamespace(
             crew=builder._runtime_crew,
+            task=builder.rfq_dispatch_task(),
             tool_name=name,
             tool_input=tool_input,
             tool_result=result,
@@ -382,6 +383,23 @@ class FlowContractTests(unittest.TestCase):
         self.assertEqual(dispatch.status, "failed")
         self.assertIn("verifiable message ID", dispatch.error)
         self.assertIn("verifiable message ID", builder.dispatch_batch.warnings[0])
+
+    def test_dispatch_guardrail_retries_missing_tool_steps(self):
+        builder = self._intake_builder()
+        builder.validate_sourcing_plan(self._output(self._plan()))
+        valid, message = builder.validate_dispatch_batch(Mock())
+        self.assertFalse(valid)
+        self.assertIn("GMAIL_FETCH_EMAILS", message)
+
+        rfq_id = "RFQ-PR-1001-S-001"
+        fetch = self._tool_context(
+            builder, "GMAIL_FETCH_EMAILS", {"query": rfq_id}, '{"messages":[]}'
+        )
+        builder.guard_gmail_tool(fetch)
+        builder.capture_gmail_result(fetch)
+        valid, message = builder.validate_dispatch_batch(Mock())
+        self.assertFalse(valid)
+        self.assertIn("GMAIL_SEND_EMAIL", message)
 
     def test_partial_dispatch_failure_preserves_success(self):
         suppliers = [
