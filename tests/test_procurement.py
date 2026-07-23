@@ -7,6 +7,7 @@ from types import SimpleNamespace
 from unittest.mock import Mock, patch
 
 import pdfplumber
+from reportlab.pdfgen import canvas
 
 from procurement_flow import main as flow_main
 from procurement_flow.crews.intake_crew.intake_crew import ProcurementIntakeCrew
@@ -134,6 +135,20 @@ class QuoteScoringTests(unittest.TestCase):
 
     def test_pdf_without_attachment_data_returns_warning(self):
         self.assertIn("WARNING", extract_pdf_text(json.dumps({"size": 0})))
+
+    def test_downloaded_pdf_attachment_is_extracted(self):
+        with tempfile.TemporaryDirectory(prefix="procurement-quote-") as temp_dir:
+            pdf_path = Path(temp_dir) / "quote.pdf"
+            document = canvas.Canvas(str(pdf_path))
+            document.drawString(72, 720, "Unit price USD 100")
+            document.save()
+
+            text = extract_pdf_text(
+                json.dumps({"attachment": {"file_path": str(pdf_path)}}),
+                temp_dir,
+            )
+
+        self.assertIn("Unit price USD 100", text)
 
     def test_incomplete_quote_line_becomes_a_warning(self):
         review = build_quote_review(

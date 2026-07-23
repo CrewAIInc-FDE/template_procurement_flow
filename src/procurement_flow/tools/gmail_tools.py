@@ -76,6 +76,34 @@ def composio_file_client(upload_dir: str | Path):
     )
 
 
+def composio_attachment_client(download_dir: str | Path):
+    """Return a Composio client restricted to one temporary quote directory."""
+    download_path = Path(download_dir).resolve()
+    temp_root = Path(tempfile.gettempdir()).resolve()
+    if (
+        download_path.parent != temp_root
+        or not download_path.name.startswith("procurement-quote-")
+    ):
+        raise RuntimeError("Quote attachment directory is outside the approved temporary path")
+    api_key = os.getenv("COMPOSIO_API_KEY", "").strip()
+    if not api_key:
+        raise RuntimeError("COMPOSIO_API_KEY is missing")
+    os.environ.setdefault("COMPOSIO_CACHE_DIR", str(temp_root / "composio-cache"))
+    from composio import Composio
+    from composio_crewai import CrewAIProvider
+
+    return Composio(
+        api_key=api_key,
+        provider=CrewAIProvider(),
+        toolkit_versions={
+            "gmail": os.getenv("COMPOSIO_GMAIL_TOOLKIT_VERSION", "20260702_01")
+        },
+        dangerously_allow_auto_upload_download_files=True,
+        file_download_dir=str(download_path),
+        file_upload_dirs=False,
+    )
+
+
 def run_composio_action(action_name: str, *, client=None, **arguments: Any) -> dict:
     """Execute one Gmail action for the configured Composio user."""
     result = (client or _composio()).tools.execute(
@@ -145,10 +173,48 @@ def _find_base64_data(value: Any) -> str | None:
     return None
 
 
-def extract_pdf_text(payload: str) -> str:
+def _find_downloaded_pdf(value: Any, download_dir: Path) -> Path | None:
+    if isinstance(value, str):
+        candidate = Path(value)
+        if not candidate.is_absolute():
+            candidate = download_dir / candidate
+        candidate = candidate.resolve()
+        if (
+            candidate.is_relative_to(download_dir)
+            and candidate.is_file()
+            and candidate.suffix.lower() == ".pdf"
+        ):
+            return candidate
+    elif isinstance(value, dict):
+        for child in value.values():
+            found = _find_downloaded_pdf(child, download_dir)
+            if found:
+                return found
+    elif isinstance(value, list):
+        for child in value:
+            found = _find_downloaded_pdf(child, download_dir)
+            if found:
+                return found
+    return None
+
+
+def extract_pdf_text(payload: str, download_dir: str | Path | None = None) -> str:
     """Decode a Gmail attachment response and return text or a safe warning."""
     try:
         body = json.loads(payload)
+        downloaded_pdf = (
+            _find_downloaded_pdf(body, Path(download_dir).resolve())
+            if download_dir
+            else None
+        )
+        if downloaded_pdf:
+            with pdfplumber.open(downloaded_pdf) as pdf:
+                text = "\n\n".join(
+                    (page.extract_text() or "").strip() for page in pdf.pages
+                ).strip()
+            if not text:
+                return "WARNING: PDF is scanned or has no extractable text; OCR is not enabled."
+            return text[:60000]
         encoded = _find_base64_data(body)
         if not encoded:
             return "WARNING: Gmail returned no attachment data."
@@ -176,13 +242,15 @@ class ReadGmailPdfAttachmentTool(BaseTool):
         self, message_id: str, attachment_id: str, file_name: str = "quote.pdf"
     ) -> str:
         try:
-            payload = run_composio_action(
-                GMAIL_GET_ATTACHMENT,
-                user_id="me",
-                message_id=message_id,
-                attachment_id=attachment_id,
-                file_name=file_name,
-            )
-            return extract_pdf_text(json.dumps(payload))
+            with tempfile.TemporaryDirectory(prefix="procurement-quote-") as download_dir:
+                payload = run_composio_action(
+                    GMAIL_GET_ATTACHMENT,
+                    client=composio_attachment_client(download_dir),
+                    user_id="me",
+                    message_id=message_id,
+                    attachment_id=attachment_id,
+                    file_name=file_name,
+                )
+                return extract_pdf_text(json.dumps(payload), download_dir)
         except RuntimeError as exc:
             return f"WARNING: {exc}"
