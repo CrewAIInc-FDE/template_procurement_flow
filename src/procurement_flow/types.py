@@ -76,9 +76,9 @@ class ExtractedQuote(BaseModel):
     supplier_id: str = ""
     supplier_name: str
     request_item_id: int
-    unit_price: float
+    unit_price: float | None = None
     currency: str
-    delivery_days: int
+    delivery_days: int | None = None
     received_at: str
     message_id: str
     rfq_id: str = ""

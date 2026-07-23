@@ -91,7 +91,13 @@ def build_quote_review(
                 f"Quote {quote.quote_id} references unknown or already-awarded item {quote.request_item_id}."
             )
             continue
-        if quote.unit_price <= 0 or quote.delivery_days < 1 or currency not in SUPPORTED_CURRENCIES:
+        if (
+            quote.unit_price is None
+            or quote.delivery_days is None
+            or quote.unit_price <= 0
+            or quote.delivery_days < 1
+            or currency not in SUPPORTED_CURRENCIES
+        ):
             review_warnings.append(
                 f"Quote {quote.quote_id} is unscorable: price must be positive, delivery at least one day, and currency USD or CLP."
             )

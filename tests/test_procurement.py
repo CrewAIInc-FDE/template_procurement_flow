@@ -135,6 +135,26 @@ class QuoteScoringTests(unittest.TestCase):
     def test_pdf_without_attachment_data_returns_warning(self):
         self.assertIn("WARNING", extract_pdf_text(json.dumps({"size": 0})))
 
+    def test_incomplete_quote_line_becomes_a_warning(self):
+        review = build_quote_review(
+            "PR-1001",
+            self.items,
+            [{
+                "quote_id": "incomplete",
+                "supplier_name": "Alpha",
+                "request_item_id": 1,
+                "unit_price": None,
+                "currency": "USD",
+                "delivery_days": None,
+                "received_at": "2026-07-23T10:00:00Z",
+                "message_id": "reply-1",
+            }],
+            950,
+        )
+
+        self.assertEqual(review.lines, [])
+        self.assertIn("unscorable", review.warnings[0])
+
 
 class PurchaseOrderTests(unittest.TestCase):
     def _award(self, item_id, supplier_id, supplier_name, quote_id):
