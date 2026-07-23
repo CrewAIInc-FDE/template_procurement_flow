@@ -556,6 +556,27 @@ class FlowContractTests(unittest.TestCase):
         self.assertEqual(context.tool_input["page_token"], "next-page")
         self.assertEqual(context.tool_input["max_results"], 100)
 
+    def test_pdf_quote_guardrail_requires_attachment_read(self):
+        incomplete = QuoteCollection.model_validate({
+            "quotes": [{
+                "quote_id": "quote.pdf",
+                "supplier_name": "Supplier",
+                "request_item_id": 1,
+                "unit_price": None,
+                "currency": "USD",
+                "delivery_days": None,
+                "received_at": "2026-07-23",
+                "message_id": "reply-1",
+                "source": "pdf",
+            }]
+        })
+        valid, message = QuoteReviewCrew.require_pdf_quote_details(
+            self._output(incomplete)
+        )
+
+        self.assertFalse(valid)
+        self.assertIn("read_gmail_pdf_attachment", message)
+
     @staticmethod
     def _po_document():
         return generate_purchase_orders(

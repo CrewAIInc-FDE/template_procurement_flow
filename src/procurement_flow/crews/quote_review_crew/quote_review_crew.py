@@ -2,6 +2,7 @@ from crewai import Agent, Crew, Process, Task
 from crewai.agents.agent_builder.base_agent import BaseAgent
 from crewai.hooks import before_tool_call, unregister_before_tool_call_hook
 from crewai.project import CrewBase, after_kickoff, agent, crew, task
+from crewai.tasks.task_output import TaskOutput
 from crewai.tools import BaseTool
 
 from procurement_flow.types import QuoteCollection
@@ -45,9 +46,28 @@ class QuoteReviewCrew:
             config=self.tasks_config["quote_extraction_task"],  # type: ignore[index]
             tools=self.gmail_tools,
             output_pydantic=QuoteCollection,
+            guardrail=self.require_pdf_quote_details,
+            guardrail_max_retries=2,
         )
         self._quote_task_id = str(quote_task.id)
         return quote_task
+
+    @staticmethod
+    def require_pdf_quote_details(output: TaskOutput) -> tuple[bool, str]:
+        collection = output.pydantic or QuoteCollection.model_validate_json(output.raw)
+        incomplete = [
+            quote.quote_id
+            for quote in collection.quotes
+            if quote.source.casefold() == "pdf"
+            and (quote.unit_price is None or quote.delivery_days is None)
+        ]
+        if incomplete:
+            return False, (
+                "PDF quote details are incomplete. Call read_gmail_pdf_attachment "
+                "for each attached quote and extract its unit prices, currency, and "
+                f"delivery days before returning: {', '.join(incomplete)}."
+            )
+        return True, collection.model_dump_json()
 
     @before_tool_call
     def canonicalize_gmail_search(self, context) -> bool | None:

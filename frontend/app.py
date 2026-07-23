@@ -493,6 +493,7 @@ def request_detail(pr_number):
 
 @app.post("/api/requests/<pr_number>/review-quotes")
 def review_quotes(pr_number):
+    force = request.args.get("force") == "1"
     with db() as conn:
         conn.execute("BEGIN IMMEDIATE")
         pr = conn.execute(
@@ -505,12 +506,27 @@ def review_quotes(pr_number):
             " AND state='pending' ORDER BY created_at DESC LIMIT 1",
             (pr_number,),
         ).fetchone()
+        if force and pr["status"] == "awaiting_review":
+            conn.execute(
+                "UPDATE pending_reviews SET resolved_at=?"
+                " WHERE pr_number=? AND resolved_at IS NULL",
+                (now(), pr_number),
+            )
+            conn.execute(
+                "UPDATE kickoffs SET state='superseded', updated_at=?"
+                " WHERE pr_number=? AND mode='quote_review' AND state='pending'",
+                (now(), pr_number),
+            )
+            pending = None
         if pending or pr["status"] in ("reviewing_quotes", "awaiting_review"):
-            return jsonify({
-                "kickoff_id": pending["kickoff_id"] if pending else None,
-                "already_running": True,
-            }), 202
-        if pr["status"] != "awaiting_quotes":
+            if not (force and pr["status"] == "awaiting_review"):
+                return jsonify({
+                    "kickoff_id": pending["kickoff_id"] if pending else None,
+                    "already_running": True,
+                }), 202
+        if pr["status"] != "awaiting_quotes" and not (
+            force and pr["status"] == "awaiting_review"
+        ):
             return jsonify({"error": "request is not awaiting quotes"}), 409
         setting = conn.execute(
             "SELECT value FROM settings WHERE key='clp_per_usd'"

@@ -139,6 +139,38 @@ class PortalWorkflowTests(unittest.TestCase):
         self.assertTrue(second.get_json()["already_running"])
         self.assertEqual(start.call_count, 1)
 
+    def test_forced_review_supersedes_stale_human_review(self):
+        pr = self._request(1)
+        self._kickoff(pr, "stale-review")
+        with portal.db() as conn:
+            conn.execute(
+                "INSERT INTO pending_reviews (pr_number, callback_url, memo, received_at)"
+                " VALUES (?,?,?,?)",
+                (pr, portal.FIXTURE_CALLBACK, "{}", portal.now()),
+            )
+            conn.execute(
+                "UPDATE purchase_requests SET status='awaiting_review'"
+                " WHERE pr_number=?",
+                (pr,),
+            )
+        with patch.object(portal.amp, "start_kickoff", return_value="fresh-review"):
+            response = self.client.post(
+                f"/api/requests/{pr}/review-quotes?force=1"
+            )
+
+        self.assertEqual(response.status_code, 202)
+        self.assertFalse(response.get_json()["already_running"])
+        with portal.db() as conn:
+            old_state = conn.execute(
+                "SELECT state FROM kickoffs WHERE kickoff_id='stale-review'"
+            ).fetchone()[0]
+            resolved_at = conn.execute(
+                "SELECT resolved_at FROM pending_reviews WHERE pr_number=?",
+                (pr,),
+            ).fetchone()[0]
+        self.assertEqual(old_state, "superseded")
+        self.assertTrue(resolved_at)
+
     def test_review_endpoint_hides_internal_exception(self):
         pr = self._request(1)
         with patch.object(portal.amp, "start_kickoff", side_effect=RuntimeError("secret-token")):
