@@ -22,6 +22,16 @@ class RequestDraft(BaseModel):
     detected_language: str
 
 
+class SupplierShortlist(BaseModel):
+    supplier_id: str
+    catalog_item_ids: list[str]
+
+
+class SourcingPlan(BaseModel):
+    request_draft: RequestDraft
+    supplier_shortlist: list[SupplierShortlist] = Field(default_factory=list)
+
+
 class ScreeningResult(BaseModel):
     verdict: str  # pass | flag | reject
     violations: list[str] = Field(default_factory=list)
@@ -43,6 +53,11 @@ class RfqDispatch(BaseModel):
     sent_at: str = ""
     reply_count: int = 0
     last_reply_at: str = ""
+
+
+class RfqDispatchBatch(BaseModel):
+    dispatches: list[RfqDispatch] = Field(default_factory=list)
+    warnings: list[str] = Field(default_factory=list)
 
 
 class RfqReply(BaseModel):

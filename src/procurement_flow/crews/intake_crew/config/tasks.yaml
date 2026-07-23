@@ -1,0 +1,110 @@
+sourcing_plan_task:
+  description: >
+    Build the validated sourcing plan for purchase request {pr_number}.
+
+    Employee request:
+    {message}
+
+    Requesting employee:
+    {employee_json}
+
+    Approved catalog:
+    {catalog_json}
+
+    Approved supplier directory:
+    {suppliers_json}
+
+    Map the free-text request to catalog items. Use only catalog item IDs from
+    the catalog, infer positive quantities and default to 1, preserve unmatched
+    text verbatim, preserve the requester's language in the justification, set
+    urgency to low, normal, or high, and return the ISO 639-1 language code.
+    Shortlist suppliers before quotes exist using category coverage plus the
+    supplier metadata and operating record. A shortlisted supplier may include
+    only requested items in categories listed for that supplier.
+  expected_output: >
+    A JSON object with request_draft and supplier_shortlist. request_draft has
+    line_items, justification, urgency, unmatched, estimated_total_usd, and
+    detected_language. supplier_shortlist is a list of objects with supplier_id
+    and catalog_item_ids.
+  agent: sourcing_agent
+
+compliance_check_task:
+  description: >
+    Check purchase request {pr_number} from the validated sourcing plan against
+    the corporate procurement policy, rule by rule.
+
+    Corporate procurement policy:
+    {policy}
+
+    Requesting employee:
+    {employee_json}
+
+    This employee's other requests in the last 14 days:
+    {recent_requests_json}
+
+    Check the approval matrix, requester limit, order-splitting rule, applicable
+    category rules, business purpose, and plausible quantities. Treat unmatched
+    request text as a possible ambiguity.
+  expected_output: >
+    A markdown checklist of every applicable rule with PASS or VIOLATION,
+    evidence for each result, and the overall compliance position.
+  agent: policy_compliance_officer
+
+anomaly_check_task:
+  description: >
+    Independently assess purchase request {pr_number} from the validated
+    sourcing plan for fraud, abuse, or anomaly.
+
+    Requesting employee:
+    {employee_json}
+
+    This employee's other requests in the last 14 days:
+    {recent_requests_json}
+
+    Consider quantity, business purpose, role fit, order splitting, personal use,
+    gifts, and anything else an experienced investigator would question.
+  expected_output: >
+    A short markdown assessment listing evidence-backed anomalies or explicitly
+    stating that the request looks clean, followed by CLEAN, SUSPICIOUS, or
+    HIGHLY SUSPICIOUS.
+  agent: fraud_anomaly_analyst
+
+screening_verdict_task:
+  description: >
+    Combine the compliance checklist and anomaly assessment for purchase request
+    {pr_number}.
+
+    Verdict rules:
+    - reject for a conduct-rule violation or clear fraud or abuse.
+    - flag for policy violations or suspicious anomalies that need human review
+      but could be legitimate.
+    - pass when the request is compliant and clean.
+  expected_output: >
+    A JSON object with verdict (pass, flag, or reject), violations (list of
+    evidence-backed strings), anomalies (list of evidence-backed strings), and
+    reasoning (2-4 sentences).
+  agent: policy_compliance_officer
+
+rfq_dispatch_task:
+  description: >
+    Dispatch the validated sourcing plan for purchase request {pr_number}.
+    This task runs only for pass or flag verdicts.
+
+    Approved supplier directory:
+    {suppliers_json}
+
+    Demo recipient override:
+    {demo_recipient}
+
+    For every shortlisted supplier, first call GMAIL_FETCH_EMAILS to search the
+    connected account's Sent folder for that supplier's RFQ reference and actual
+    recipient. If an existing message is returned, reuse it and do not send.
+    Otherwise call GMAIL_SEND_EMAIL once. Use only the recipient, reference,
+    subject, and body from the validated sourcing plan and tool guardrail.
+    Continue after one supplier fails so the result reports partial dispatches.
+    Never claim an RFQ was sent unless Gmail returned a message ID.
+  expected_output: >
+    A JSON object with dispatches and warnings. Each dispatch preserves the RFQ
+    and supplier fields and has status sent only with a Gmail message ID;
+    failures use status failed and include an error.
+  agent: sourcing_agent

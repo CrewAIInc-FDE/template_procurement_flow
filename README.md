@@ -5,11 +5,11 @@ A two-process procurement workflow built with CrewAI Flows and a Flask review po
 ## Workflow
 
 ```text
-Process 1 — intake and supplier outreach
-chat message → PR allocated → request structured → screen request
+Process 1 — Procurement Intake Crew
+chat message → PR allocated → request structured and suppliers shortlisted → screen request
 → match suppliers by catalog category → send one Gmail RFQ per supplier → awaiting_quotes
 
-Process 2 — quote review (explicit portal action)
+Process 2 — Quote Review Crew (explicit portal action)
 scan Gmail for replies to recorded RFQs → extract email/PDF quote facts
 → rank supplier options per item → pause for human approval
 → generate/update one internal-draft PO per awarded supplier
@@ -19,7 +19,7 @@ The processes share one AMP deployment but never chain automatically. The portal
 
 ### Intake
 
-The chat sends natural language in any language. Flask allocates `PR-####` synchronously, so the chat can confirm the request without waiting for AI output. Intake maps the request to the bundled catalog, screens it, selects suppliers by category, and sends an RFQ from the Gmail account connected through Composio. Rejected requests never contact suppliers.
+The chat sends natural language in any language. Flask allocates `PR-####` synchronously, so the chat can confirm the request without waiting for AI output. One named intake crew maps the request to the bundled catalog, shortlists known suppliers using category fit and supplier metadata, screens it, and conditionally dispatches RFQs from the Gmail account connected through Composio. Deterministic guardrails canonicalize the catalog and all email fields. Rejected requests skip the conditional Gmail task.
 
 ```json
 {
@@ -31,13 +31,13 @@ The chat sends natural language in any language. Flask allocates `PR-####` synch
 }
 ```
 
-Each email has a stable reference such as `RFQ-PR-1001-S-005`. Before sending, the flow searches Gmail Sent for that reference so a retried kickoff does not duplicate the message. Set `DEMO_RFQ_RECIPIENT_OVERRIDE` to route every supplier email to one personal demo mailbox while retaining the intended supplier identity in the portal.
+Each email has a stable reference such as `RFQ-PR-1001-S-005`. Before sending, the sourcing agent searches Gmail Sent for that reference and actual recipient (`in:sent to:<actual-recipient> "RFQ-..."`) so a retried kickoff to the same mailbox does not duplicate the message. Changing `DEMO_RFQ_RECIPIENT_OVERRIDE` intentionally sends a new email to the new recipient while retaining the intended supplier identity in the portal.
 
 ### Quote review
 
 The quote-review kickoff receives outstanding request items, existing awards/PO numbers, and the RFQ dispatch records created during intake. Screening has already happened before supplier outreach; flags remain visible but do not alter quote scores.
 
-The inbox analyst has only `GMAIL_FETCH_EMAILS` and `GMAIL_FETCH_MESSAGE_BY_MESSAGE_ID`. PDF content is read through the local `read_gmail_pdf_attachment` tool, which calls `GMAIL_GET_ATTACHMENT` and extracts text with `pdfplumber`. For each recorded RFQ it searches:
+One named quote-review crew owns extraction. Its inbox analyst has only `GMAIL_FETCH_EMAILS` and `GMAIL_FETCH_MESSAGE_BY_MESSAGE_ID`. PDF content is read through the local `read_gmail_pdf_attachment` tool, which calls `GMAIL_GET_ATTACHMENT` and extracts text with `pdfplumber`. For each recorded RFQ it searches:
 
 ```text
 in:inbox -from:me from:<actual-recipient> "RFQ-PR-####-S-###"
@@ -112,10 +112,11 @@ Without `DEPLOYMENT_URL`, the portal runs the Flow in-process. Quote review stil
 
 ## Key files
 
-- `src/procurement_flow/main.py` — the two Flow processes and HITL gate
+- `src/procurement_flow/main.py` — Flow routing, deterministic quote checks, and HITL
+- `src/procurement_flow/crews/intake_crew/` — intake, screening, and conditional RFQ dispatch
+- `src/procurement_flow/crews/quote_review_crew/` — Gmail quote extraction
 - `src/procurement_flow/procurement.py` — deterministic scoring, award validation, and PO rendering
-- `src/procurement_flow/tools/custom_tool.py` — Gmail PDF attachment reader
-- `src/procurement_flow/crews/screening_crew/` — policy/fraud screening
+- `src/procurement_flow/tools/gmail_tools.py` — scoped Composio tools and PDF reader
 - `frontend/app.py` and `frontend/db.py` — APIs, orchestration, and normalized persistence
 - `frontend/static/app.js` — three-column board and editable proposal drawer
 - `tests/` — deterministic and portal workflow tests

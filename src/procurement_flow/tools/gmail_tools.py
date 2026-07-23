@@ -76,6 +76,34 @@ def gmail_quote_tools() -> list[BaseTool]:
     )
 
 
+@cache
+def gmail_dispatch_tools() -> list[BaseTool]:
+    """Return only the Gmail tools used by the sourcing dispatch task."""
+    return _composio().tools.get(
+        user_id=_composio_user_id(),
+        tools=[GMAIL_FETCH_EMAILS, GMAIL_SEND_EMAIL],
+    )
+
+
+def find_message_ref(value: Any) -> tuple[str, str]:
+    """Find a Gmail message ID and its optional thread ID in a tool response."""
+    if isinstance(value, dict):
+        message_id = value.get("messageId") or value.get("message_id") or value.get("id")
+        thread_id = value.get("threadId") or value.get("thread_id") or ""
+        if message_id:
+            return str(message_id), str(thread_id)
+        for child in value.values():
+            found = find_message_ref(child)
+            if found[0]:
+                return found
+    elif isinstance(value, list):
+        for child in value:
+            found = find_message_ref(child)
+            if found[0]:
+                return found
+    return "", ""
+
+
 def _find_base64_data(value: Any) -> str | None:
     if isinstance(value, dict):
         data = value.get("data")

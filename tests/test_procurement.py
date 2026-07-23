@@ -1,9 +1,11 @@
 import json
 import os
 import unittest
+from types import SimpleNamespace
 from unittest.mock import Mock, patch
 
 from procurement_flow import main as flow_main
+from procurement_flow.crews.intake_crew.intake_crew import ProcurementIntakeCrew
 from procurement_flow.main import ProcurementFlow
 from procurement_flow.procurement import (
     build_quote_review,
@@ -11,9 +13,14 @@ from procurement_flow.procurement import (
     parse_award_feedback,
     validate_awards,
 )
-from procurement_flow.tools import custom_tool
-from procurement_flow.tools.custom_tool import extract_pdf_text
-from procurement_flow.types import QuoteCollection, RequestDraft, RfqDispatch, ScreeningResult
+from procurement_flow.tools import gmail_tools
+from procurement_flow.tools.gmail_tools import extract_pdf_text
+from procurement_flow.types import (
+    QuoteCollection,
+    RfqDispatch,
+    ScreeningResult,
+    SourcingPlan,
+)
 
 
 class QuoteScoringTests(unittest.TestCase):
@@ -174,6 +181,70 @@ class PurchaseOrderTests(unittest.TestCase):
 
 
 class FlowContractTests(unittest.TestCase):
+    def _intake_builder(
+        self,
+        *,
+        override="personal@example.com",
+        suppliers=None,
+        dispatch_error="",
+    ):
+        catalog = [{
+            "id": "IT-001",
+            "sku": "LAP",
+            "name": "Laptop",
+            "unit_price_usd": 100,
+            "category": "it_office",
+        }]
+        suppliers = suppliers or [{
+            "id": "S-001",
+            "name": "Supplier",
+            "email": "quotes@supplier.example",
+            "categories": ["it_office"],
+        }]
+        builder = ProcurementIntakeCrew(
+            pr_number="PR-1001",
+            catalog=catalog,
+            suppliers=suppliers,
+            override_recipient=override,
+            dispatch_error=dispatch_error,
+        )
+        builder.crew()
+        return builder
+
+    def _plan(self, supplier_shortlist=None):
+        return SourcingPlan.model_validate({
+            "request_draft": {
+                "line_items": [{
+                    "catalog_item_id": "IT-001",
+                    "quantity": 1,
+                    "unit_price_usd": 0,
+                    "line_total_usd": 0,
+                }],
+                "justification": "Work",
+                "urgency": "normal",
+                "unmatched": [],
+                "estimated_total_usd": 0,
+                "detected_language": "en",
+            },
+            "supplier_shortlist": supplier_shortlist or [{
+                "supplier_id": "S-001",
+                "catalog_item_ids": ["IT-001"],
+            }],
+        })
+
+    @staticmethod
+    def _output(model):
+        return Mock(pydantic=model, raw=model.model_dump_json())
+
+    @staticmethod
+    def _tool_context(builder, name, tool_input, result=None):
+        return SimpleNamespace(
+            crew=builder._runtime_crew,
+            tool_name=name,
+            tool_input=tool_input,
+            tool_result=result,
+        )
+
     def test_flow_builds_and_missing_gmail_configuration_is_retryable(self):
         flow = ProcurementFlow()
         flow.state.clp_per_usd = 950
@@ -189,84 +260,162 @@ class FlowContractTests(unittest.TestCase):
         self.assertEqual(flow.state.final_status, "awaiting_quotes")
         self.assertIn("Gmail is not configured", flow.state.warnings[0])
 
-    def test_rejected_intake_never_sends_supplier_email(self):
-        flow = ProcurementFlow()
-        flow.state.request = {"pr_number": "PR-1001"}
-        flow.state.catalog = [{
-            "id": "IT-001", "sku": "LAP", "name": "Laptop",
-            "unit_price_usd": 100, "category": "it_office",
-        }]
-        draft = RequestDraft(
-            line_items=[{
-                "catalog_item_id": "IT-001", "quantity": 1,
-                "unit_price_usd": 0, "line_total_usd": 0,
-            }],
-            justification="Personal gift", urgency="normal", unmatched=[],
-            estimated_total_usd=0, detected_language="en",
-        )
+    def test_sourcing_plan_is_canonicalized(self):
+        builder = self._intake_builder()
+        valid, result = builder.validate_sourcing_plan(self._output(self._plan()))
+        self.assertTrue(valid)
+        plan = SourcingPlan.model_validate_json(result)
+        line = plan.request_draft.line_items[0]
+        self.assertEqual((line.sku, line.name), ("LAP", "Laptop"))
+        self.assertEqual((line.unit_price_usd, line.line_total_usd), (100, 100))
+        self.assertEqual(plan.request_draft.estimated_total_usd, 100)
 
-        def reject():
-            flow.state.screening = ScreeningResult(
-                verdict="reject", violations=["Personal use"], anomalies=[], reasoning="Rejected",
+    def test_sourcing_plan_rejects_unknown_or_incompatible_suppliers(self):
+        suppliers = [
+            {
+                "id": "S-001", "name": "IT", "email": "it@example.com",
+                "categories": ["it_office"],
+            },
+            {
+                "id": "S-002", "name": "Safety", "email": "ppe@example.com",
+                "categories": ["ppe_safety"],
+            },
+        ]
+        for supplier_id, error in (
+            ("S-999", "Unknown supplier"),
+            ("S-002", "incompatible"),
+        ):
+            with self.subTest(supplier_id=supplier_id):
+                builder = self._intake_builder(suppliers=suppliers)
+                plan = self._plan([{
+                    "supplier_id": supplier_id,
+                    "catalog_item_ids": ["IT-001"],
+                }])
+                valid, message = builder.validate_sourcing_plan(self._output(plan))
+                self.assertFalse(valid)
+                self.assertIn(error, message)
+
+    def test_rejected_intake_skips_conditional_gmail_task(self):
+        builder = self._intake_builder()
+        verdict = ScreeningResult(
+            verdict="reject",
+            violations=["Personal use"],
+            anomalies=[],
+            reasoning="Rejected",
+        )
+        self.assertFalse(builder.rfq_dispatch_task().should_execute(self._output(verdict)))
+
+    def test_same_recipient_reuses_id_only_sent_message(self):
+        builder = self._intake_builder()
+        builder.validate_sourcing_plan(self._output(self._plan()))
+        rfq_id = "RFQ-PR-1001-S-001"
+        fetch = self._tool_context(
+            builder,
+            "GMAIL_FETCH_EMAILS",
+            {"query": rfq_id},
+            json.dumps({"messages": [{"id": "existing-1"}]}),
+        )
+        self.assertIsNone(builder.guard_gmail_tool(fetch))
+        self.assertEqual(
+            fetch.tool_input["query"],
+            f'in:sent to:personal@example.com "{rfq_id}"',
+        )
+        builder.capture_gmail_result(fetch)
+
+        send = self._tool_context(
+            builder,
+            "GMAIL_SEND_EMAIL",
+            {"subject": rfq_id},
+        )
+        self.assertFalse(builder.guard_gmail_tool(send))
+        builder.validate_dispatch_batch(Mock())
+        dispatch = builder.dispatch_batch.dispatches[0]
+        self.assertEqual(dispatch.status, "sent")
+        self.assertEqual(dispatch.gmail_message_id, "existing-1")
+        self.assertEqual(dispatch.gmail_thread_id, "")
+
+    def test_changed_recipient_allows_new_send_with_id_only_response(self):
+        builder = self._intake_builder(override="buyer@proton.me")
+        builder.validate_sourcing_plan(self._output(self._plan()))
+        rfq_id = "RFQ-PR-1001-S-001"
+        fetch = self._tool_context(
+            builder,
+            "GMAIL_FETCH_EMAILS",
+            {"query": rfq_id},
+            json.dumps({"messages": []}),
+        )
+        builder.guard_gmail_tool(fetch)
+        self.assertIn("to:buyer@proton.me", fetch.tool_input["query"])
+        builder.capture_gmail_result(fetch)
+
+        send = self._tool_context(
+            builder,
+            "GMAIL_SEND_EMAIL",
+            {"subject": rfq_id},
+            json.dumps({"id": "sent-proton"}),
+        )
+        self.assertIsNone(builder.guard_gmail_tool(send))
+        self.assertEqual(send.tool_input["recipient_email"], "buyer@proton.me")
+        builder.capture_gmail_result(send)
+        builder.validate_dispatch_batch(Mock())
+        dispatch = builder.dispatch_batch.dispatches[0]
+        self.assertEqual((dispatch.status, dispatch.gmail_message_id), ("sent", "sent-proton"))
+
+    def test_missing_message_id_is_a_failed_dispatch(self):
+        builder = self._intake_builder()
+        builder.validate_sourcing_plan(self._output(self._plan()))
+        rfq_id = "RFQ-PR-1001-S-001"
+        fetch = self._tool_context(
+            builder, "GMAIL_FETCH_EMAILS", {"query": rfq_id}, '{"messages":[]}'
+        )
+        builder.guard_gmail_tool(fetch)
+        builder.capture_gmail_result(fetch)
+        send = self._tool_context(
+            builder, "GMAIL_SEND_EMAIL", {"subject": rfq_id}, "{}"
+        )
+        builder.guard_gmail_tool(send)
+        builder.capture_gmail_result(send)
+        builder.validate_dispatch_batch(Mock())
+        dispatch = builder.dispatch_batch.dispatches[0]
+        self.assertEqual(dispatch.status, "failed")
+        self.assertIn("verifiable message ID", dispatch.error)
+        self.assertIn("verifiable message ID", builder.dispatch_batch.warnings[0])
+
+    def test_partial_dispatch_failure_preserves_success(self):
+        suppliers = [
+            {
+                "id": "S-001", "name": "One", "email": "one@example.com",
+                "categories": ["it_office"],
+            },
+            {
+                "id": "S-002", "name": "Two", "email": "two@example.com",
+                "categories": ["it_office"],
+            },
+        ]
+        builder = self._intake_builder(suppliers=suppliers)
+        plan = self._plan([
+            {"supplier_id": supplier_id, "catalog_item_ids": ["IT-001"]}
+            for supplier_id in ("S-001", "S-002")
+        ])
+        builder.validate_sourcing_plan(self._output(plan))
+        for supplier_id, result in (("S-001", '{"id":"sent-1"}'), ("S-002", "{}")):
+            rfq_id = f"RFQ-PR-1001-{supplier_id}"
+            fetch = self._tool_context(
+                builder, "GMAIL_FETCH_EMAILS", {"query": rfq_id}, '{"messages":[]}'
             )
-
-        llm = unittest.mock.Mock()
-        llm.call.return_value = draft
-        with patch.object(flow_main, "LLM", return_value=llm), \
-             patch.object(flow, "_run_screening", side_effect=reject), \
-             patch.object(flow, "_dispatch_rfq_emails") as send:
-            flow.run_intake()
-        send.assert_not_called()
-        self.assertEqual(flow.state.final_status, "rejected")
-
-    def test_demo_override_sends_to_one_address_and_reuses_sent_rfq(self):
-        flow = ProcurementFlow()
-        flow.state.request = {"pr_number": "PR-1001"}
-        flow.state.request_draft = RequestDraft(
-            line_items=[{
-                "catalog_item_id": "IT-001", "sku": "LAP", "name": "Laptop",
-                "quantity": 1, "unit_price_usd": 100, "line_total_usd": 100,
-            }],
-            justification="Work", urgency="normal", unmatched=[],
-            estimated_total_usd=100, detected_language="en",
+            builder.guard_gmail_tool(fetch)
+            builder.capture_gmail_result(fetch)
+            send = self._tool_context(
+                builder, "GMAIL_SEND_EMAIL", {"subject": rfq_id}, result
+            )
+            builder.guard_gmail_tool(send)
+            builder.capture_gmail_result(send)
+        builder.validate_dispatch_batch(Mock())
+        self.assertEqual(
+            [dispatch.status for dispatch in builder.dispatch_batch.dispatches],
+            ["sent", "failed"],
         )
-        flow.state.catalog = [{"id": "IT-001", "category": "it_office"}]
-        flow.state.suppliers = [{
-            "id": "S-001", "name": "Supplier", "email": "quotes@supplier.example",
-            "categories": ["it_office"],
-        }]
-        calls = []
-
-        def action(name, **kwargs):
-            calls.append((name, kwargs))
-            if name == "GMAIL_FETCH_EMAILS":
-                return {"messages": []}
-            return {"id": "sent-1", "thread_id": "thread-1"}
-
-        with patch.dict(os.environ, {
-            "COMPOSIO_API_KEY": "key",
-            "COMPOSIO_USER_ID": "procurement-demo",
-            "DEMO_RFQ_RECIPIENT_OVERRIDE": "personal@example.com",
-        }), patch.object(flow_main, "run_composio_action", side_effect=action):
-            flow._dispatch_rfq_emails()
-
-        self.assertEqual(flow.state.rfq_dispatches[0].actual_recipient, "personal@example.com")
-        self.assertTrue(flow.state.rfq_dispatches[0].override_applied)
-        self.assertEqual(calls[-1][0], "GMAIL_SEND_EMAIL")
-        self.assertEqual(calls[-1][1]["recipient_email"], "personal@example.com")
-
-        flow.state.rfq_dispatches = []
-        with patch.dict(os.environ, {
-            "COMPOSIO_API_KEY": "key",
-            "COMPOSIO_USER_ID": "procurement-demo",
-            "DEMO_RFQ_RECIPIENT_OVERRIDE": "personal@example.com",
-        }), patch.object(
-            flow_main, "run_composio_action",
-            return_value={"messages": [{"id": "sent-1", "thread_id": "thread-1"}]},
-        ) as existing:
-            flow._dispatch_rfq_emails()
-        self.assertEqual(existing.call_count, 1)
-        self.assertEqual(flow.state.rfq_dispatches[0].gmail_thread_id, "thread-1")
+        self.assertEqual(len(builder.dispatch_batch.warnings), 1)
 
     def test_composio_action_unwraps_data_and_surfaces_errors(self):
         client = Mock()
@@ -276,9 +425,9 @@ class FlowContractTests(unittest.TestCase):
             "error": None,
         }
         with patch.dict(os.environ, {"COMPOSIO_USER_ID": "procurement-demo"}), \
-             patch.object(custom_tool, "_composio", return_value=client):
+             patch.object(gmail_tools, "_composio", return_value=client):
             self.assertEqual(
-                custom_tool.run_composio_action("GMAIL_SEND_EMAIL", body="hello"),
+                gmail_tools.run_composio_action("GMAIL_SEND_EMAIL", body="hello"),
                 {"id": "message-1"},
             )
             client.tools.execute.return_value = {
@@ -287,7 +436,7 @@ class FlowContractTests(unittest.TestCase):
                 "error": "not connected",
             }
             with self.assertRaisesRegex(RuntimeError, "not connected"):
-                custom_tool.run_composio_action("GMAIL_SEND_EMAIL", body="hello")
+                gmail_tools.run_composio_action("GMAIL_SEND_EMAIL", body="hello")
 
     def test_only_recorded_inbound_thread_can_become_a_quote(self):
         flow = ProcurementFlow()
