@@ -303,7 +303,9 @@ class FlowContractTests(unittest.TestCase):
             anomalies=[],
             reasoning="Rejected",
         )
-        self.assertFalse(builder.rfq_dispatch_task().should_execute(self._output(verdict)))
+        task = builder.rfq_dispatch_task()
+        self.assertFalse(task.should_execute(self._output(verdict)))
+        self.assertFalse(task.reloaded)
 
     def test_same_recipient_reuses_id_only_sent_message(self):
         builder = self._intake_builder()

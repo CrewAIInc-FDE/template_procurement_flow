@@ -439,7 +439,7 @@ class ProcurementIntakeCrew:
 
     @task
     def rfq_dispatch_task(self) -> ConditionalTask:
-        return ConditionalTask(
+        conditional = ConditionalTask(
             config=self.tasks_config["rfq_dispatch_task"],  # type: ignore[index]
             condition=self.should_dispatch,
             context=[self.sourcing_plan_task(), self.screening_verdict_task()],
@@ -448,6 +448,9 @@ class ProcurementIntakeCrew:
             guardrail=self.validate_dispatch_batch,
             guardrail_max_retries=0,
         )
+        # AMP 1.15.5's task reloader expects this runtime flag on subclasses.
+        object.__setattr__(conditional, "reloaded", False)
+        return conditional
 
     @after_kickoff
     def unregister_tool_hooks(self, result):
